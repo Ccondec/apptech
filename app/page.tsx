@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useEffect } from 'react';
+import React, { useState, } from 'react';
 import Login from '@/components/ui/login';
 import TechnicalForm from '@/components/ui/TechnicalForm';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
-  const handleLogin = ({ email, password, role }: { email: string; password: string; role?: string }) => {
+  const handleLogin = ({ email, role }: { email: string; password: string; role?: string }) => {
     // Las credenciales ya fueron validadas en el componente Login
     setCurrentUser({
       email,

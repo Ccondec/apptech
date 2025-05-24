@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState,} from 'react';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,7 @@ import { AlertCircle, Lock, Mail, ArrowRight } from 'lucide-react';
 interface LoginFormData {
   email: string;
   password: string;
+  role?: string;
 }
 
 interface LoginFormProps {
