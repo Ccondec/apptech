@@ -1,16 +1,18 @@
+cat > /Users/ccondec/Documents/apptech/next.config.ts << 'EOF'
 import type { NextConfig } from "next";
 const withPWA = require("next-pwa")({
   dest: "public",
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === "development", // Solo activo en producción
+  disable: process.env.NODE_ENV === "development",
   fallbacks: {
     document: "/offline",
   },
 });
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  turbopack: {},
 };
 
 module.exports = withPWA(nextConfig);
+EOF
