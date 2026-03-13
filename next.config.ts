@@ -1,4 +1,3 @@
-cat > /Users/ccondec/Documents/apptech/next.config.ts << 'EOF'
 import type { NextConfig } from "next";
 const withPWA = require("next-pwa")({
   dest: "public",
@@ -15,4 +14,3 @@ const nextConfig: NextConfig = {
 };
 
 module.exports = withPWA(nextConfig);
-EOF
