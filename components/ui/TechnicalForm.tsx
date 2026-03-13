@@ -1,54 +1,67 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/exhaustive-deps */
+
+type Photo = { id: number; url: string; description: string };
+type MaterialRow = { id: string; item: string; qty: string; ref: string };
+type FormData = {
+  clientCompany?: string; clientContact?: string; clientAddress?: string;
+  clientEmail?: string; clientCity?: string; clientPhone?: string;
+  technicianSelect?: string; technicianName?: string; technicianId?: string;
+  workOrder?: string; timeStart?: string; timeEnd?: string; nextVisit?: string;
+  equipmentBrand?: string; equipmentModel?: string; equipmentCapacity?: string;
+  equipmentSerial?: string; equipmentLocation?: string; equipmentUbicacion?: string;
+  capacity?: string;
+  rectifierStatus?: string; chargerStatus?: string; inverterStatus?: string; batteryStatus?: string;
+  workDescription?: string; recommendations?: string;
+  clientSignature?: string | null; technicianSignature?: string | null;
+  selectedServices?: string[]; checkedItems?: string[];
+  photos?: Photo[]; materials?: MaterialRow[];
+  [key: string]: unknown;
+};
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Wrench, User, FileText, Camera, X, Pen, Download, ChevronDown } from 'lucide-react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas-pro';
-import Image from 'next/image';
-import { useForm, Controller } from 'react-hook-form';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Wrench, User, FileText, Camera, X, Pen, Download, ChevronDown, Clock, Plus, Trash2, Package, LogOut } from 'lucide-react';
 
-interface SignaturePadProps {
-  onSave: (dataUrl: string) => void;
-  onClear: () => void;
-  isSaved?: boolean;
-  id:string;
-}
-
-type DrawEvent = React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>;
-
-// Componente de firma con mejoras para dispositivos táctiles
-const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear, isSaved = false,id }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+// Optimized SignaturePad Component
+const SignaturePad = ({ onSave, onClear, isSaved = false, id }: { onSave: (data: string) => void; onClear: () => void; isSaved?: boolean; id: string }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [context, setContext] = useState<CanvasRenderingContext2D | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 300, height: 150 });
   const [signatureSaved, setSignatureSaved] = useState(isSaved);
 
-  // Función para ajustar el tamaño del canvas según el dispositivo
-  const adjustCanvasSize = () => {
+  const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Optimized canvas sizing with debounce
+  const adjustCanvasSize = useCallback(() => {
     const container = canvasRef.current?.parentElement;
     if (container) {
-      const width = container.clientWidth - 20; // Resta el padding
+      const width = Math.min(container.clientWidth - 20, 600);
       setCanvasSize({
         width: width,
-        height: width / 2 // Mantener proporción 2:1
+        height: Math.max(width / 2, 120)
       });
     }
-  };
+  }, []);
+
+  // Debounced resize handler
+  const debouncedResize = useCallback(() => {
+    if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
+    resizeTimeoutRef.current = setTimeout(adjustCanvasSize, 150);
+  }, [adjustCanvasSize]);
 
   useEffect(() => {
-    // Ajustar tamaño al montar
     adjustCanvasSize();
-    
-    // Ajustar tamaño cuando cambia el tamaño de la ventana
-    window.addEventListener('resize', adjustCanvasSize);
-    
+    window.addEventListener('resize', debouncedResize);
     return () => {
-      window.removeEventListener('resize', adjustCanvasSize);
+      window.removeEventListener('resize', debouncedResize);
+      if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
     };
-  }, []);
+  }, [debouncedResize, adjustCanvasSize]);
   
   useEffect(() => {
     if (canvasRef.current) {
@@ -56,94 +69,79 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear, isSaved = 
       const ctx = canvas.getContext('2d');
       
       if (ctx) {
+        // Optimize canvas for better performance
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         setContext(ctx);
       }
     }
   }, [canvasSize]);
 
   useEffect(() => {
-    // Actualizar el estado local cuando cambia la prop externa
-    console.log(`SignaturePad ${id} - isSaved updated to:`, isSaved);
     setSignatureSaved(isSaved);
   }, [isSaved, id]);
 
-  const startDrawing = (e: DrawEvent) => {
-    e.preventDefault(); // Prevenir comportamiento por defecto para evitar scroll en móviles
-    if (!context) return;
-    const { offsetX, offsetY } = getCoordinates(e);
-    context.beginPath();
-    context.moveTo(offsetX, offsetY);
-    setIsDrawing(true);
-    // Si el usuario comienza a dibujar, la firma ya no está guardada
-    setSignatureSaved(false);
-  };
-
-  const draw = (e: DrawEvent) => {
-    e.preventDefault(); // Prevenir comportamiento por defecto para evitar scroll en móviles
-    if (!isDrawing || !context) return;
-    const { offsetX, offsetY } = getCoordinates(e);
-    context.lineTo(offsetX, offsetY);
-    context.stroke();
-  };
-
-  const stopDrawing = () => {
-    if (isDrawing && context) {  // Verificar que context no sea null
-      context.closePath();
-      setIsDrawing(false);
-    } else if (isDrawing) {
-      // Si isDrawing es true pero context es null, al menos actualiza el estado
-      setIsDrawing(false);
-    }
-  };
-
-  const getCoordinates = (e: DrawEvent) => {
-    if (!canvasRef.current) {
-      return { offsetX: 0, offsetY: 0 }; // Valor predeterminado si el canvas no existe
-    }
-    
+  // Optimized coordinate calculation with pointer events
+  const getCoordinates = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return { offsetX: 0, offsetY: 0 };
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    
-    // Detectar si es un evento táctil o de ratón
-    if ('touches' in e) {
-      // Evento táctil
-      const touch = e.touches[0];
-      return {
-        offsetX: (touch.clientX - rect.left) * scaleX,
-        offsetY: (touch.clientY - rect.top) * scaleY
-      };
-    } else {
-      // Evento de mouse
-      return {
-        offsetX: (e.clientX - rect.left) * scaleX,
-        offsetY: (e.clientY - rect.top) * scaleY
-      };
-    }
-  }; 
+    return {
+      offsetX: (e.clientX - rect.left) * scaleX,
+      offsetY: (e.clientY - rect.top) * scaleY
+    };
+  }, []);
 
-  const clear = () => {
+  const startDrawing = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!context) return;
+    
+    const { offsetX, offsetY } = getCoordinates(e);
+    context.beginPath();
+    context.moveTo(offsetX, offsetY);
+    setIsDrawing(true);
+    setSignatureSaved(false);
+  }, [context, getCoordinates]);
+
+  const draw = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!isDrawing || !context) return;
+    
+    const { offsetX, offsetY } = getCoordinates(e);
+    context.lineTo(offsetX, offsetY);
+    context.stroke();
+  }, [isDrawing, context, getCoordinates]);
+
+  const stopDrawing = useCallback(() => {
+    if (isDrawing && context) {
+      context.closePath();
+    }
+    setIsDrawing(false);
+  }, [isDrawing, context]);
+
+  const clear = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return; // Verificar que canvas no sea null
+    if (!canvas) return;
+    
     const ctx = canvas.getContext('2d');
-    if (!ctx) return; // Verificar que ctx no sea null
+    if (!ctx) return;
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     onClear();
-    setSignatureSaved(false); // Resetear el estado guardado
-  };
+    setSignatureSaved(false);
+  }, [onClear]);
 
-  const save = () => {
+  const save = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return; // Verificar que canvas no sea null
+    if (!canvas) return;
     
-    console.log(`SignaturePad ${id} - Saving signature`);
-    onSave(canvas.toDataURL());
-    setSignatureSaved(true); // Actualizar estado a guardado
-  };
+    onSave(canvas.toDataURL('image/png', 0.8)); // Optimize quality
+    setSignatureSaved(true);
+  }, [onSave]);
 
   return (
     <div className="space-y-4">
@@ -152,15 +150,16 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear, isSaved = 
           ref={canvasRef}
           width={canvasSize.width}
           height={canvasSize.height}
-          className="w-full border border-gray-200 rounded touch-none"
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawing}
-          onMouseOut={stopDrawing}
-          onTouchStart={startDrawing}
-          onTouchMove={draw}
-          onTouchEnd={stopDrawing}
-          style={{ touchAction: 'none' }} // Importante para prevenir el zoom en dispositivos táctiles
+          className="w-full border border-gray-200 rounded touch-none cursor-crosshair"
+          onPointerDown={startDrawing}
+          onPointerMove={draw}
+          onPointerUp={stopDrawing}
+          onPointerLeave={stopDrawing}
+          style={{ 
+            touchAction: 'none',
+            maxWidth: '100%',
+            height: 'auto'
+          }}
         />
       </div>
       <div className="flex gap-2">
@@ -184,66 +183,26 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear, isSaved = 
   );
 };
 
-// Define una interface para cada campo eléctrico
-interface ElectricalField {
-  id: string;
-  label: string;
-  unit: string;
-}
-
-// Define una interface para las propiedades del componente
-interface ElectricalInputGroupProps {
-  title: string;
-  fields: ElectricalField[];
-  values: Record<string, string | number>;
-  onChange: (id: string, value: string) => void;
-}
-
-// Aplica la interface al componente
-const ElectricalInputGroup: React.FC<ElectricalInputGroupProps> = ({ title, fields, values, onChange }) => (
-  <div className="space-y-4">
-    <h4 className="font-medium pt-2">{title}</h4>
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-      {fields.map(({ id, label, unit }) => (
-        <div key={id} className="space-y-2">
-          <Label htmlFor={id} className="text-sm">{label} ({unit})</Label>
-          <Input
-            id={id}
-            type="number"
-            value={values[id] || ''}
-            onChange={(e) => onChange(id, e.target.value)}
-            className="text-right text-sm"
-            placeholder="0.0"
-          />
-        </div>
-      ))}
-    </div>
-  </div>
-);
-
-interface CollapsibleSectionProps {
-  title: string;
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; // Para iconos SVG como los de lucide-react
-  children: React.ReactNode;
-  initiallyOpen?: boolean; // Opcional con valor predeterminado
-}
-
-// Componente colapsable para secciones en dispositivos móviles
-const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({ title, icon, children, initiallyOpen = false }) => {
+// Optimized CollapsibleSection Component
+const CollapsibleSection = ({ title, icon: IconComponent, children, initiallyOpen = false }: { title: string; icon: React.ElementType; children: React.ReactNode; initiallyOpen?: boolean }) => {
   const [isOpen, setIsOpen] = useState(initiallyOpen);
-  const IconComponent = icon;
   
+  const toggleOpen = useCallback(() => {
+    setIsOpen(prev => !prev);
+  }, []);
+
   return (
     <div className="border rounded-lg">
       <button 
-        className="w-full flex items-center justify-between p-3 text-left"
-        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50 transition-colors"
+        onClick={toggleOpen}
+        type="button"
       >
         <h3 className="font-semibold flex items-center gap-2">
           {IconComponent && <IconComponent className="w-5 h-5" />}
           {title}
         </h3>
-        <ChevronDown className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       
       {isOpen && (
@@ -255,691 +214,129 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({ title, icon, ch
   );
 };
 
-// Define la interfaz para los valores del formulario de cliente
-interface ClientFormValues {
-  clientCompany?: string;
-  clientAddress?: string;
-  clientCity?: string;
-  clientContact?: string;
-  clientEmail?: string;
-  clientPhone?: string;
-  // Añade aquí cualquier otro campo que pueda existir en values
-}
-
-// Define la interfaz para las propiedades del componente ClientSection
-interface ClientSectionProps {
-  values: ClientFormValues;
-  onChange: (field: string, value: string) => void;
-  isMobile: boolean;
-}
-
-// Aplica la interfaz al componente
-const ClientSection: React.FC<ClientSectionProps> = ({ values, onChange, isMobile }) => {
-  const content = (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-      {/* Columna Izquierda */}
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="clientCompany">Empresa</Label>
-          <Input
-            id="clientCompany"
-            value={values.clientCompany || ''}
-            onChange={(e) => onChange('clientCompany', e.target.value)}
-            placeholder="Nombre de la empresa"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="clientAddress">Dirección</Label>
-          <Input
-            id="clientAddress"
-            value={values.clientAddress || ''}
-            onChange={(e) => onChange('clientAddress', e.target.value)}
-            placeholder="Dirección de la empresa"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="clientCity">Ciudad</Label>
-          <Input
-            id="clientCity"
-            value={values.clientCity || ''}
-            onChange={(e) => onChange('clientCity', e.target.value)}
-            placeholder="Ciudad"
-          />
-        </div>
-      </div>
-      
-      {/* Columna Derecha */}
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="clientContact">Contacto</Label>
-          <Input
-            id="clientContact"
-            value={values.clientContact || ''}
-            onChange={(e) => onChange('clientContact', e.target.value)}
-            placeholder="Nombre del contacto"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="clientEmail">Correo Electrónico</Label>
-          <Input
-            id="clientEmail"
-            type="email"
-            value={values.clientEmail || ''}
-            onChange={(e) => onChange('clientEmail', e.target.value)}
-            placeholder="correo@empresa.com"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="clientPhone">Teléfono</Label>
-          <Input
-            id="clientPhone"
-            value={values.clientPhone || ''}
-            onChange={(e) => onChange('clientPhone', e.target.value)}
-            placeholder="Número de contacto"
-          />
-        </div>
-      </div>
-    </div>
-  );
-  
-  if (isMobile) {
-    return (
-      <CollapsibleSection title="Información del Cliente" icon={User} initiallyOpen={true}>
-        {content}
-      </CollapsibleSection>
-    );
-  }
-  
-  return (
-    <div className="space-y-4">
-      <h3 className="font-semibold flex items-center gap-2">
-        <User className="w-5 h-5" />
-        Información del Cliente
-      </h3>
-      {content}
-    </div>
-  );
-};
-
-// Define una interfaz para el componente de Tipo de Servicio
-interface ServiceTypeProps {
-  value: string;
-  onChange: (value: string) => void;
-  isMobile: boolean;
-}
-
-// Crear un componente específico para el Tipo de Servicio
-const ServiceTypeSection: React.FC<ServiceTypeProps> = ({ value, onChange, isMobile }) => {
-  const content = (
-    <div className="space-y-4">
-      <div className="flex items-center">
-        <label htmlFor="serviceType" className="text-lg font-medium flex-1">Tipo de Servicio:</label>
-        <div className="flex-1">
-          <select
-            id="serviceType"
-            value={value || ''}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full p-2 border rounded-md bg-white"
-          >
-            <option value="">Seleccione un servicio</option>
-            {[
-              'Mantenimiento Preventivo',
-              'Cambio Baterías',
-              'Revision y Diagnóstico',
-              'Mantenimiento Correctivo',
-              'Instalación y Arranque',
-              'Garantía'
-            ].map(service => (
-              <option key={service} value={service.toLowerCase()}>{service}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (isMobile) {
-    return (
-      <CollapsibleSection title="Tipo de Servicio" icon={Wrench} initiallyOpen={true}>
-        {content}
-      </CollapsibleSection>
-    );
-  }
-
-  return (
-    <div className="p-4 border rounded-lg bg-gray-50">
-      <h3 className="font-bold flex items-center gap-2 mb-4">
-        <Wrench className="w-5 h-5" />
-        Detalles del Servicio
-      </h3>
-      {content}
-    </div>
-  );
-    
-};
-
-// Define la interfaz para los valores del formulario de servicio
-interface ServiceFormValues {
-  serviceType?: string;
-  equipmentBrand?: string;
-  equipmentModel?: string;
-  equipmentSerial?: string;
-  equipmentUbicacion?: string;
-  // Añade aquí cualquier otro campo que pueda existir en values
-}
-
-// Define la interfaz para las propiedades del componente ServiceSection
-interface ServiceSectionProps {
-  values: ServiceFormValues;
-  onChange: (field: string, value: string) => void;
-  isMobile: boolean;
-}
-
-// Aplica la interfaz al componente
-const ServiceSection: React.FC<ServiceSectionProps> = ({ values, onChange, isMobile }) => {
-  const content = (
-    <>
-      
-      {/* Resto de campos en grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="equipmentBrand">Marca Equipo</Label>
-          <Input
-            id="equipmentBrand"
-            value={values.equipmentBrand || ''}
-            onChange={(e) => onChange('equipmentBrand', e.target.value)}
-            placeholder="Marca del equipo"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="equipmentModel">Modelo Equipo</Label>
-          <Input
-            id="equipmentModel"
-            value={values.equipmentModel || ''}
-            onChange={(e) => onChange('equipmentModel', e.target.value)}
-            placeholder="Modelo del equipo"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="equipmentSerial">Serial Equipo</Label>
-          <Input
-            id="equipmentSerial"
-            value={values.equipmentSerial || ''}
-            onChange={(e) => onChange('equipmentSerial', e.target.value)}
-            placeholder="Número de serie"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="equipmentUbicacion">Ubicacion Equipo</Label>
-          <Input
-            id="equipmentUbicacion"
-            value={values.equipmentUbicacion || ''}
-            onChange={(e) => onChange('equipmentUbicacion', e.target.value)}
-            placeholder="Ubicacion Equipo"
-          />
-        </div>
-      </div>
-    </>
-  );
-  
-  if (isMobile) {
-    return (
-      <CollapsibleSection title="Detalles del Servicio" icon={Wrench}>
-        {content}
-      </CollapsibleSection>
-    );
-  }
-  
-  return (
-    <div className="space-y-4">
-      {content}
-    </div>
-  );
-};
-
-// Reutilizamos la interfaz ElectricalField que definimos anteriormente
-interface ElectricalField {
-  id: string;
-  label: string;
-  unit: string;
-}
-
-// Define la estructura específica de los parámetros eléctricos
-interface ElectricalParameters {
-  inputVoltage: ElectricalField[];
-  inputCurrent: ElectricalField[];
-  outputVoltage: ElectricalField[];
-  outputCurrent: ElectricalField[];
-}
-
-// Define la interfaz para las propiedades del componente ElectricalSection
-interface ElectricalSectionProps {
-  electricalParameters: ElectricalParameters;
-  formData: Record<string, string | number>;
-  handleFieldChange: (field: string, value: string) => void;
-  isMobile: boolean;
-}
-
-// Aplica la interfaz al componente
-const ElectricalSection: React.FC<ElectricalSectionProps> = ({ 
-  electricalParameters, 
-  formData, 
-  handleFieldChange, 
-  isMobile 
-}) => {
-  const content = (
-    <div className="space-y-6">
-      <ElectricalInputGroup
-        title="Voltaje de Entrada"
-        fields={electricalParameters.inputVoltage}
-        values={formData}
-        onChange={handleFieldChange}
-      />
-      <ElectricalInputGroup
-        title="Corriente de Entrada"
-        fields={electricalParameters.inputCurrent}
-        values={formData}
-        onChange={handleFieldChange}
-      />
-      <ElectricalInputGroup
-        title="Voltaje de Salida"
-        fields={electricalParameters.outputVoltage}
-        values={formData}
-        onChange={handleFieldChange}
-      />
-      <ElectricalInputGroup
-        title="Corriente de Salida"
-        fields={electricalParameters.outputCurrent}
-        values={formData}
-        onChange={handleFieldChange}
-      />
-    </div>
-  );
-  
-  if (isMobile) {
-    return (
-      <CollapsibleSection title="Parámetros Eléctricos" icon={FileText}>
-        {content}
-      </CollapsibleSection>
-    );
-  }
-  
-  return (
-    <div className="space-y-4">
-      <h3 className="font-semibold flex items-center gap-2">
-        <FileText className="w-5 h-5" />
-        Parámetros Eléctricos
-      </h3>
-      {content}
-    </div>
-  );
-};
-
-// Define una interfaz para los valores específicos del formulario de baterías
-interface BatteryFormData {
-  // Parámetros de batería - Grupo 1
-  batteryVoltageTotal?: string | number;
-  batteryVoltageTest?: string | number;
-  batteryCurrentDischarge?: string | number;
-  batteryCurrentTest?: string | number;
-  
-  // Parámetros de batería - Grupo 2
-  batteryQuantity?: string | number;
-  batteryReference?: string | number;
-  batteryAutonomy?: string | number;
-  batteryFecha?: string | number;
-  
-  // Otros campos que puedas tener
-  [key: string]: string | number | undefined;
-}
-
-// Define la interfaz para las propiedades del componente BatterySection
-interface BatterySectionProps {
-  formData: BatteryFormData;
-  handleFieldChange: (field: string, value: string) => void;
-  isMobile: boolean;
-}
-
-// Componente para la sección de baterías (sin los estados)
-const BatterySection: React.FC<BatterySectionProps> = ({ formData, handleFieldChange, isMobile }) => {
-  const content = (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { id: 'batteryVoltageTotal', label: 'Voltaje Total', unit: 'V' },
-          { id: 'batteryVoltageTest', label: 'Voltaje Descarga', unit: 'V' },
-          { id: 'batteryCurrentDischarge', label: 'Corriente Descarga', unit: 'A' },
-          { id: 'batteryCurrentTest', label: 'Corriente Carga', unit: 'A' }
-        ].map(({ id, label, unit }) => (
-          <div key={id} className="space-y-2">
-            <Label htmlFor={id} className="text-sm">{label} ({unit})</Label>
-            <Input
-              id={id}
-              type="number"
-              value={formData[id] || ''}
-              onChange={(e) => handleFieldChange(id, e.target.value)}
-              className="text-right text-sm"
-              placeholder="0.0"
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
-        <div className="space-y-2">
-          <Label htmlFor="batteryQuantity" className="text-sm">Cantidad Baterías</Label>
-          <Input
-            id="batteryQuantity"
-            type="number"
-            value={formData.batteryQuantity || ''}
-            onChange={(e) => handleFieldChange('batteryQuantity', e.target.value)}
-            className="text-right text-sm"
-            placeholder="0"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="batteryReference" className="text-sm">Referencia (Ah)</Label>
-          <Input
-            id="batteryReference"
-            value={formData.batteryReference || ''}
-            onChange={(e) => handleFieldChange('batteryReference', e.target.value)}
-            className="text-right text-sm"
-            placeholder="0"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="batteryAutonomy" className="text-sm">Autonomía (min)</Label>
-          <Input
-            id="batteryAutonomy"
-            type="number"
-            value={formData.batteryAutonomy || ''}
-            onChange={(e) => handleFieldChange('batteryAutonomy', e.target.value)}
-            className="text-right text-sm"
-            placeholder="0"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="batteryFecha" className="text-sm">Fecha Fabricacion (FI)</Label>
-          <Input
-            id="batteryFecha"
-            value={formData.batteryFecha || ''}
-            onChange={(e) => handleFieldChange('batteryFecha', e.target.value)}
-            className="text-right text-sm"
-            placeholder="0"
-          />
-        </div>
-      </div>
-    </div>
-  );
-  
-  if (isMobile) {
-    return (
-      <CollapsibleSection title="Parámetros de Baterías" icon={FileText}>
-        {content}
-      </CollapsibleSection>
-    );
-  }
-  
-  return (
-    <div className="space-y-4">
-      <h4 className="font-medium pt-4">Parámetros de Baterías</h4>
-      {content}
-    </div>
-  );
-};
-
-// Define una interfaz para los valores específicos del formulario de estado del equipo
-interface EquipmentStatusFormData {
-  rectifierStatus?: string;
-  chargerStatus?: string;
-  inverterStatus?: string;
-  batteryStatus?: string;
-  
-  // Otros campos que puedas tener
-  [key: string]: string | number | undefined;
-}
-
-// Define la interfaz para las propiedades del componente EquipmentStatusSection
-interface EquipmentStatusSectionProps {
-  formData: EquipmentStatusFormData;
-  handleFieldChange: (field: string, value: string) => void;
-  isMobile: boolean;
-}
-
-// Componente para la sección de estado del equipo
-const EquipmentStatusSection: React.FC<EquipmentStatusSectionProps> = ({ 
-  formData, 
-  handleFieldChange, 
-  isMobile 
-}) => {
-  const content = (
+// Optimized ElectricalInputGroup
+const ElectricalInputGroup = ({ title, fields, values, onChange }: { title: string; fields: { id: string; label: string; unit: string }[]; values: Record<string, unknown>; onChange: (id: string, value: string) => void }) => (
+  <div className="space-y-4">
+    <h4 className="font-medium pt-2">{title}</h4>
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-      <div className="space-y-2">
-        <Label htmlFor="rectifierStatus" className="text-sm">Estado Rectificador</Label>
-        <select
-          id="rectifierStatus"
-          value={formData.rectifierStatus || ''}
-          onChange={(e) => handleFieldChange('rectifierStatus', e.target.value)}
-          className="w-full p-2 border rounded-md bg-white text-sm"
-        >
-          <option value="">Seleccionar estado</option>
-          <option value="bueno">Bueno</option>
-          <option value="revisar">Revisar</option>
-          <option value="falla">Falla</option>
-        </select>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="chargerStatus" className="text-sm">Estado Cargador</Label>
-        <select
-          id="chargerStatus"
-          value={formData.chargerStatus || ''}
-          onChange={(e) => handleFieldChange('chargerStatus', e.target.value)}
-          className="w-full p-2 border rounded-md bg-white text-sm"
-        >
-          <option value="">Seleccionar estado</option>
-          <option value="bueno">Bueno</option>
-          <option value="revisar">Revisar</option>
-          <option value="falla">Falla</option>
-        </select>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="inverterStatus" className="text-sm">Estado Inversor</Label>
-        <select
-          id="inverterStatus"
-          value={formData.inverterStatus || ''}
-          onChange={(e) => handleFieldChange('inverterStatus', e.target.value)}
-          className="w-full p-2 border rounded-md bg-white text-sm"
-        >
-          <option value="">Seleccionar estado</option>
-          <option value="bueno">Bueno</option>
-          <option value="revisar">Revisar</option>
-          <option value="falla">Falla</option>
-        </select>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="batteryStatus" className="text-sm">Estado Batería</Label>
-        <select
-          id="batteryStatus"
-          value={formData.batteryStatus || ''}
-          onChange={(e) => handleFieldChange('batteryStatus', e.target.value)}
-          className="w-full p-2 border rounded-md bg-white text-sm"
-        >
-          <option value="">Seleccionar estado</option>
-          <option value="bueno">Bueno</option>
-          <option value="regular">Regular</option>
-          <option value="remplazar">Remplazar</option>
-        </select>
-      </div>
+      {fields.map(({ id, label, unit }) => (
+        <div key={id} className="space-y-2">
+          <Label htmlFor={id} className="text-sm">{label} ({unit})</Label>
+          <Input
+            id={id}
+            type="number"
+            value={String(values[id] ?? '')}
+            onChange={(e) => onChange(id, e.target.value)}
+            className="text-right text-sm"
+            placeholder="0.0"
+            inputMode="decimal"
+          />
+        </div>
+      ))}
     </div>
-  );
-  
-  if (isMobile) {
-    return (
-      <CollapsibleSection title="Estado del Equipo" icon={Wrench}>
-        {content}
-      </CollapsibleSection>
-    );
-  }
-  
-  return (
-    <div className="space-y-4">
-      <h3 className="font-semibold flex items-center gap-2">
-        <Wrench className="w-5 h-5" />
-        Estado del Equipo
-      </h3>
-      {content}
-    </div>
-  );
-};
+  </div>
+);
 
-// Define una interfaz para los valores del formulario de descripción
-interface DescriptionFormData {
-  description?: string;
-  recommendations?: string;
-  // Otros campos que puedas tener
-  [key: string]: string | number | undefined;
-}
+// Optimized Photo handling component
+const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<string, any>; setFormData: React.Dispatch<React.SetStateAction<any>>; isMobile: boolean }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-// Define la interfaz para las propiedades del componente DescriptionSection
-interface DescriptionSectionProps {
-  formData: DescriptionFormData;
-  handleFieldChange: (field: string, value: string) => void;
-  isMobile: boolean;
-}
+  const addPhoto = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-// Componente para la sección de descripción y recomendaciones
-const DescriptionSection: React.FC<DescriptionSectionProps> = ({ formData, handleFieldChange, isMobile }) => {
-  const content = (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="description">Descripción del trabajo realizado</Label>
-        <textarea
-          id="description"
-          value={formData.description || ''}
-          onChange={(e) => handleFieldChange('description', e.target.value)}
-          className="w-full min-h-[100px] p-2 border rounded-md text-justify"
-          placeholder="Detalle el trabajo realizado..."
-        />
-      </div>
-
-      <div className="space-y-2 mt-4">
-        <Label htmlFor="recommendations">Recomendaciones</Label>
-        <textarea
-          id="recommendations"
-          value={formData.recommendations || ''}
-          onChange={(e) => handleFieldChange('recommendations', e.target.value)}
-          className="w-full min-h-[100px] p-2 border rounded-md text-justify"
-          placeholder="Ingrese las recomendaciones..."
-        />
-      </div>
-    </div>
-  );
-  
-  if (isMobile) {
-    return (
-      <CollapsibleSection title="Descripción y Recomendaciones" icon={FileText}>
-        {content}
-      </CollapsibleSection>
-    );
-  }
-  
-  return (
-    <div className="space-y-4">
-      <h3 className="font-semibold flex items-center gap-2">
-        <FileText className="w-5 h-5" />
-        Descripción y Recomendaciones
-      </h3>
-      {content}
-    </div>
-  );
-};
-
-// Define una interfaz para la estructura de las fotos
-interface Photo {
-  id: number;
-  url: string | ArrayBuffer | null;
-  description?: string;
-  // Otros campos que puedas tener para las fotos
-}
-
-// Define una interfaz para los valores del formulario relacionados con fotos
-interface PhotoFormData {
-  photos?: Photo[];
-  // Otros campos que puedas tener
-  [key: string]: Photo[] | string | number | boolean | undefined;
-}
-
-// Define la interfaz para las propiedades del componente PhotosSection
-interface PhotosSectionProps {
-  formData: PhotoFormData;
-  setFormData: React.Dispatch<React.SetStateAction<PhotoFormData>>;
-  isMobile: boolean;
-}
-
-// Define el tipo para el evento de input de archivo
-type FileInputEvent = React.ChangeEvent<HTMLInputElement>;
-
-// Componente para la sección de fotos
-const PhotosSection: React.FC<PhotosSectionProps> = ({ formData, setFormData, isMobile }) => {
-  const addPhoto = (e: FileInputEvent) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = event.target?.result;
-        if (result) {
-          // Asegúrate de que url sea string
-        const url = typeof result === 'string' 
-        ? result 
-        : ''; // Proporciona un string vacío o algún otro valor por defecto
-      
-          setFormData(prev => ({
-            ...prev,
-            photos: [...(prev.photos || []), {
-              id: Date.now(),
-              url,
-              description: ''
-            }]
-          }));
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+  if (file.size > 10 * 1024 * 1024) {
+    alert('El archivo es muy grande. Máximo 10MB.');
     e.target.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const result = event.target?.result;
+    if (!result) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const MAX_WIDTH = 1200;
+      const MAX_HEIGHT = 900;
+      
+      let width = img.width;
+      let height = img.height;
+
+      if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+        const ratio = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const normalizedUrl = canvas.toDataURL('image/jpeg', 0.75);
+
+      setFormData((prev: Record<string, any>) => ({
+        ...prev,
+        photos: [...(prev.photos || []), {
+          id: Date.now() + Math.random(),
+          url: normalizedUrl,
+          description: ''
+        }]
+      }));
+    };
+
+    img.onerror = () => {
+      alert('No se pudo cargar la imagen.');
+    };
+
+    img.src = typeof result === 'string' ? result : '';
   };
+
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}, [setFormData]);
+
+const removePhoto = useCallback((photoId: number) => {
+  setFormData((prev: Record<string, any>) => ({
+    ...prev,
+    photos: (prev.photos || []).filter((p: any) => p.id !== photoId)
+  }));
+}, [setFormData]);
   
-  const removePhoto = (photoId: number) => {
-    setFormData(prev => ({
+  const updatePhotoDescription = useCallback((photoId: number, description: string) => {
+    setFormData((prev: Record<string, any>) => ({
       ...prev,
-      photos: prev.photos?.filter(p => p.id !== photoId) || []
-    }));
-  };
-  
-  const updatePhotoDescription = (photoId: number, description: string) => {
-    setFormData(prev => ({
-      ...prev,
-      photos: prev.photos?.map(p =>
-        p.id === photoId
-          ? { ...p, description }
-          : p
+      photos: prev.photos?.map((p: any) =>
+        p.id === photoId ? { ...p, description } : p
       ) || []
     }));
-  };
+  }, [setFormData]);
+
+  const triggerFileInput = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
   
   const content = (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
         <Button 
           type="button"
-          onClick={() => document.getElementById('photoInput')?.click()}
+          onClick={triggerFileInput}
           className="bg-blue-600 hover:bg-blue-700 text-white"
         >
           <Camera className="w-4 h-4 mr-2" />
           Tomar Foto
         </Button>
         <input
+          ref={fileInputRef}
           type="file"
-          id="photoInput"
           accept="image/*"
           capture="environment"
           className="hidden"
@@ -947,28 +344,26 @@ const PhotosSection: React.FC<PhotosSectionProps> = ({ formData, setFormData, is
         />
       </div>
 
-      {/* Grid de Fotos */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {(formData.photos || []).map((photo, index) => (
+        {(formData.photos || []).map((photo: Photo, index: number) => (
           <div key={photo.id} className="space-y-2 border rounded-lg p-2">
             <div className="relative">
-            {typeof photo.url === 'string' ? (
-            <Image
-              src={photo.url as string}
-              alt={`Foto ${index + 1}`}
-              width={500}
-              height={192}
-              className="object-cover rounded-lg"
-              style={{ width: '100%', height: '12rem' }} // 48px = 12rem
-            />
-            ) : (
-              <div className="w-full h-48 bg-gray-200 rounded-lg flex items-center justify-center">
-            <span>Imagen no disponible</span>
-          </div>
-        )}
+              {typeof photo.url === 'string' ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={photo.url}
+                  alt={`Foto ${index + 1}`}
+                  className="w-full h-48 object-cover rounded-lg"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="w-full h-48 bg-gray-200 rounded-lg flex items-center justify-center">
+                  <span>Imagen no disponible</span>
+                </div>
+              )}
               <button
                 type="button"
-                className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
                 onClick={() => removePhoto(photo.id)}
               >
                 <X className="w-4 h-4" />
@@ -976,9 +371,10 @@ const PhotosSection: React.FC<PhotosSectionProps> = ({ formData, setFormData, is
             </div>
             <textarea
               placeholder="Descripción de la foto..."
-              className="w-full p-2 text-sm border rounded-md"
+              className="w-full p-2 text-sm border rounded-md resize-none"
               value={photo.description}
               onChange={(e) => updatePhotoDescription(photo.id, e.target.value)}
+              rows={2}
             />
           </div>
         ))}
@@ -1005,855 +401,482 @@ const PhotosSection: React.FC<PhotosSectionProps> = ({ formData, setFormData, is
   );
 };
 
-// Define una interfaz para los valores del formulario relacionados con firmas
-interface SignaturesFormData {
-  clientSignature?: string | null;
-  clientSignatureName?: string;
-  clientSignatureId?: string;
-  technicianSignature?: string | null;
-  technicianName?: string;
-  technicianId?: string;
-  // Añade aquí cualquier otro campo relacionado con firmas
-  [key: string]: string | number | boolean | null | undefined;
-}
+// Checklist Component
+const ChecklistSection = ({ checkedItems, onCheckChange }: { checkedItems: string[]; onCheckChange: (items: string[]) => void }) => {
+  const groups = [
+    {
+      title: 'Inspección Visual',
+      items: [
+        'Limpieza general del equipo',
+        'Revisión de conexiones eléctricas',
+        'Revisión de ventilación y temperatura',
+        'Inspección de fusibles y breakers',
+        'Revisión de LEDs y alarmas activas'
+      ]
+    },
+    {
+      title: 'Pruebas Eléctricas',
+      items: [
+        'Prueba de transferencia automática',
+        'Medición de voltaje entrada/salida',
+        'Verificación de frecuencia',
+        'Prueba de bypass manual',
+        'Verificación de alarmas del sistema'
+      ]
+    },
+    {
+      title: 'Baterías',
+      items: [
+        'Limpieza de bornes y terminales',
+        'Medición de voltaje total',
+        'Medición por banco',
+        'Prueba de descarga',
+        'Verificación de temperatura de baterías',
+        'Revisión de fecha de fabricación'
+      ]
+    },
+    {
+      title: 'Documentación',
+      items: [
+        'Registro fotográfico completado',
+        'Parámetros eléctricos registrados',
+        'Firma del cliente obtenida',
+        'Recomendaciones documentadas'
+      ]
+    }
+  ];
 
-// Componente para la sección de firmas
-const SignaturesSection: React.FC<SignaturesSectionProps> = ({ formData, handleFieldChange, isMobile }) => {
-  // Determinar si las firmas están guardadas
-  const isClientSignatureSaved = formData.clientSignature ? true : false;
-  const isTechnicianSignatureSaved = formData.technicianSignature ? true : false;
-  
-  // Para depuración
-  console.log("Estado de las firmas:");
-  console.log("- Cliente guardada:", isClientSignatureSaved);
-  console.log("- Técnico guardada:", isTechnicianSignatureSaved);
+  const checked = checkedItems || [];
+  const totalItems = groups.reduce((acc, g) => acc + g.items.length, 0);
+  const doneItems = checked.length;
+  const pct = totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : 0;
 
-  const handleClientSignatureSave = (dataUrl: string) => {
-    console.log("Guardando firma del cliente");
-    handleFieldChange('clientSignature', dataUrl);
+  const toggleItem = (item: string) => {
+    if (checked.includes(item)) {
+      onCheckChange(checked.filter(i => i !== item));
+    } else {
+      onCheckChange([...checked, item]);
+    }
   };
 
-  const handleTechnicianSignatureSave = (dataUrl: string) => {
-    console.log("Guardando firma del técnico");
-    handleFieldChange('technicianSignature', dataUrl);
-  };
-
-const content = (
-  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-    {/* Firma del Cliente */}
-    <div className="space-y-4">
-      <h4 className="font-medium text-center">Firma del Cliente</h4>
-      <SignaturePad
-        id="client-signature" // ID único para el pad del cliente
-        onSave={handleClientSignatureSave}
-        onClear={() => {
-          console.log("Borrando firma del cliente");
-          handleFieldChange('clientSignature', null);
-        }}
-        isSaved={isClientSignatureSaved}
-      />
-      <div className="space-y-2">
-        <Input
-          id="clientSignatureName"
-          value={formData.clientSignatureName || ''}
-          onChange={(e) => handleFieldChange('clientSignatureName', e.target.value)}
-          placeholder="Nombre del Cliente"
-          className="text-center text-sm"
-        />
-        <Input
-          id="clientSignatureId"
-          value={formData.clientSignatureId || ''}
-          onChange={(e) => handleFieldChange('clientSignatureId', e.target.value)}
-          placeholder="Número de Identificación"
-          className="text-center text-sm"
-        />
-      </div>
-    </div>
-
-    {/* Firma del Técnico */}
-    <div className="space-y-4">
-      <h4 className="font-medium text-center">Firma del Técnico</h4>
-      <SignaturePad
-        id="technician-signature" // ID único para el pad del técnico
-        onSave={handleTechnicianSignatureSave}
-        onClear={() => {
-          console.log("Borrando firma del técnico");
-          handleFieldChange('technicianSignature', null);
-        }}
-        isSaved={isTechnicianSignatureSaved}
-      />
-      <div className="space-y-2">
-        <Input
-          id="technicianName"
-          value={String(formData.technicianName || '')}
-          onChange={(e) => handleFieldChange('technicianName', e.target.value)}
-          placeholder="Nombre del Técnico"
-          className="text-center text-sm"
-        />
-        <Input
-          id="technicianId"
-          value={String(formData.technicianId || '')}
-          onChange={(e) => handleFieldChange('technicianId', e.target.value)}
-          placeholder="Número de Identificación"
-          className="text-center text-sm"
-        />
-      </div>
-    </div>
-  </div>
-);
-  
-  if (isMobile) {
-    return (
-      <CollapsibleSection title="Firmas" icon={Pen}>
-        {content}
-      </CollapsibleSection>
-    );
-  }
-  
   return (
-    <div className="space-y-6">
-      <h3 className="font-semibold flex items-center gap-2">
-        <Pen className="w-5 h-5" />
-        Firmas
-      </h3>
-      {content}
-    </div>
+    <CollapsibleSection title="Lista de Actividades" icon={FileText}>
+      <div className="space-y-4">
+        {/* Progress bar */}
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>{doneItems} de {totalItems} actividades completadas</span>
+            <span className="font-medium text-green-600">{pct}%</span>
+          </div>
+          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-green-500 rounded-full transition-all duration-300"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Groups */}
+        {groups.map((group) => {
+          const groupDone = group.items.filter(i => checked.includes(i)).length;
+          return (
+            <div key={group.title} className="border rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2 bg-gray-50">
+                <span className="text-sm font-medium text-gray-700">{group.title}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                  {groupDone}/{group.items.length}
+                </span>
+              </div>
+              <div className="divide-y">
+                {group.items.map((item: string) => {
+                  const isChecked = checked.includes(item);
+                  return (
+                    <label
+                      key={item}
+                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleItem(item)}
+                        className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
+                      />
+                      <span className={`text-sm ${isChecked ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                        {item}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </CollapsibleSection>
   );
 };
 
-// Componente principal con detección de dispositivo
-const TechnicalForm = () => {
-  const [formData, setFormData] = useState({});
+// Service Info Section: OT, hours, next visit
+const ServiceInfoSection = ({ formData, onChange, technician }: { formData: Record<string, any>; onChange: (field: string, value: string) => void; technician: string }) => {
+  const duration = React.useMemo(() => {
+    const start = formData.timeStart;
+    const end   = formData.timeEnd;
+    if (!start || !end) return '';
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const total = (eh * 60 + em) - (sh * 60 + sm);
+    if (total <= 0) return '';
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return h > 0 ? `${h}h ${m}min` : `${m}min`;
+  }, [formData.timeStart, formData.timeEnd]);
+
+  return (
+    <CollapsibleSection title="Información del Servicio" icon={Clock} initiallyOpen={true}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="workOrder">N° Orden de Trabajo (OT)</Label>
+          <Input
+            id="workOrder"
+            value={String(formData.workOrder ?? '')}
+            onChange={(e) => onChange('workOrder', e.target.value)}
+            placeholder="OT-0001"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Técnico Responsable</Label>
+          <div className="h-10 px-3 flex items-center border rounded-md bg-gray-50 text-sm font-medium text-green-700">
+            {technician}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nextVisit">Próxima Visita Programada</Label>
+          <Input
+            id="nextVisit"
+            type="date"
+            value={String(formData.nextVisit ?? '')}
+            onChange={(e) => onChange('nextVisit', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="timeStart">Hora de Entrada</Label>
+          <Input
+            id="timeStart"
+            type="time"
+            value={String(formData.timeStart ?? '')}
+            onChange={(e) => onChange('timeStart', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="timeEnd">Hora de Salida</Label>
+          <Input
+            id="timeEnd"
+            type="time"
+            value={String(formData.timeEnd ?? '')}
+            onChange={(e) => onChange('timeEnd', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Tiempo Total</Label>
+          <div className="h-10 px-3 flex items-center border rounded-md bg-gray-50 text-sm font-medium text-green-700">
+            {duration || '—'}
+          </div>
+        </div>
+      </div>
+      {formData.nextVisit && (
+        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800">
+          Próxima visita: <strong>{new Date(formData.nextVisit + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong>
+        </div>
+      )}
+    </CollapsibleSection>
+  );
+};
+
+// Materials Section
+const MaterialsSection = ({ formData, setFormData }: { formData: Record<string, any>; setFormData: React.Dispatch<React.SetStateAction<any>> }) => {
+  const materials = formData.materials || [];
+
+  const addRow = useCallback(() => {
+    setFormData((prev: FormData) => ({
+      ...prev,
+      materials: [...(prev.materials || []), { id: Date.now(), item: '', qty: '', ref: '' }]
+    }));
+  }, [setFormData]);
+
+  const removeRow = useCallback((id: string) => {
+    setFormData((prev: FormData) => ({
+      ...prev,
+      materials: (prev.materials || []).filter(m => m.id !== id)
+    }));
+  }, [setFormData]);
+
+  const updateRow = useCallback((id: string, field: string, value: string) => {
+    setFormData((prev: FormData) => ({
+      ...prev,
+      materials: (prev.materials || []).map(m => m.id === id ? { ...m, [field]: value } : m)
+    }));
+  }, [setFormData]);
+
+  return (
+    <CollapsibleSection title="Materiales y Repuestos Utilizados" icon={Package}>
+      <div className="space-y-3">
+        {materials.length > 0 && (
+          <div className="grid grid-cols-12 gap-2 px-1">
+            <span className="col-span-6 text-xs font-medium text-gray-500">Descripción</span>
+            <span className="col-span-2 text-xs font-medium text-gray-500 text-center">Cant.</span>
+            <span className="col-span-3 text-xs font-medium text-gray-500">Referencia</span>
+            <span className="col-span-1"></span>
+          </div>
+        )}
+        {materials.map((mat: MaterialRow) => (
+          <div key={mat.id} className="grid grid-cols-12 gap-2 items-center">
+            <div className="col-span-6">
+              <Input
+                value={mat.item}
+                onChange={(e) => updateRow(mat.id, 'item', e.target.value)}
+                placeholder="Nombre del material"
+                className="text-sm"
+              />
+            </div>
+            <div className="col-span-2">
+              <Input
+                value={mat.qty}
+                onChange={(e) => updateRow(mat.id, 'qty', e.target.value)}
+                placeholder="0"
+                className="text-sm text-center"
+                type="number"
+                min="0"
+              />
+            </div>
+            <div className="col-span-3">
+              <Input
+                value={mat.ref}
+                onChange={(e) => updateRow(mat.id, 'ref', e.target.value)}
+                placeholder="Ref."
+                className="text-sm"
+              />
+            </div>
+            <div className="col-span-1 flex justify-center">
+              <button
+                type="button"
+                onClick={() => removeRow(mat.id)}
+                className="p-1 text-red-400 hover:text-red-600 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+        <Button
+          type="button"
+          onClick={addRow}
+          variant="outline"
+          className="w-full border-dashed text-gray-500 hover:text-gray-700"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Agregar material
+        </Button>
+        {materials.length > 0 && (
+          <p className="text-xs text-gray-400 text-right">{materials.length} ítem{materials.length !== 1 ? 's' : ''} registrado{materials.length !== 1 ? 's' : ''}</p>
+        )}
+      </div>
+    </CollapsibleSection>
+  );
+};
+
+// Service Type Section with multi-select
+const ServiceTypeSection = ({ selectedServices, onServiceChange }: { selectedServices: string[]; onServiceChange: (services: string[]) => void }) => {
+  const serviceOptions = [
+    'Mantenimiento Preventivo',
+    'Cambio de Baterías',
+    'Revision y Diagnóstico',
+    'Mantenimiento Correctivo',
+    'Instalación y Arranque',
+    'Garantía'
+  ];
+
+  const handleServiceToggle = (service: string) => {
+    const currentServices = selectedServices || [];
+    const isSelected = currentServices.includes(service);
+    
+    if (isSelected) {
+      // Remove service
+      onServiceChange(currentServices.filter(s => s !== service));
+    } else {
+      // Add service
+      onServiceChange([...currentServices, service]);
+    }
+  };
+
+  return (
+    <CollapsibleSection title="Tipo de Servicio" icon={Wrench} initiallyOpen={true}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {serviceOptions.map((service: string) => {
+            const isSelected = (selectedServices || []).includes(service);
+            return (
+              <label
+                key={service}
+                className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
+                  isSelected 
+                    ? 'border-blue-500 bg-blue-50 text-blue-900' 
+                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => handleServiceToggle(service)}
+                  className="mr-3 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium">{service}</span>
+              </label>
+            );
+          })}
+        </div>
+        
+        {/* Display selected services */}
+        {selectedServices && selectedServices.length > 0 && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm font-medium text-green-800 mb-2">
+              Servicios seleccionados ({selectedServices.length}):
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {selectedServices.map((service: string, index: number) => (
+                <span
+                  key={index}
+                  className="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-md"
+                >
+                  {service}
+                  <button
+                    type="button"
+                    onClick={() => handleServiceToggle(service)}
+                    className="ml-1 text-green-600 hover:text-green-800"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </CollapsibleSection>
+  );
+};
+
+// Main Component with optimizations
+const TechnicalForm = ({ technician, onLogout }: { technician: string; onLogout: () => void }) => {
+  const [formData, setFormData] = useState<FormData>({});
   const [reportNumber, setReportNumber] = useState(1);
   const [isEditingReportNumber, setIsEditingReportNumber] = useState(false);
   const [logo, setLogo] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const currentDate = new Date().toLocaleDateString();
-  const formRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved'
 
+  const currentDate = new Date().toLocaleDateString();
+  const currentTime = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  const formRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cargar datos guardados al iniciar
   useEffect(() => {
-    // Detectar si es un dispositivo móvil
+    try {
+      const savedData = localStorage.getItem('ionenergy_form_data');
+      const savedReportNumber = localStorage.getItem('ionenergy_report_number');
+      const savedLogo = localStorage.getItem('ionenergy_logo');
+      
+      if (savedData) setFormData(JSON.parse(savedData));
+      if (savedReportNumber) setReportNumber(parseInt(savedReportNumber));
+      if (savedLogo) setLogo(savedLogo);
+    } catch (_e) {
+      console.warn('Error cargando datos guardados:');
+    }
+  }, []);
+
+  // Guardar automáticamente sin causar re-renders (usando ref para el timer)
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSaveStatus('saving');
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        const dataToSave = { ...formData, photos: [] };
+        localStorage.setItem('ionenergy_form_data', JSON.stringify(dataToSave));
+        localStorage.setItem('ionenergy_report_number', String(reportNumber));
+        if (logo) localStorage.setItem('ionenergy_logo', logo);
+        setSaveStatus('saved');
+      } catch (_e) {
+        console.warn('Error guardando datos:');
+        setSaveStatus('idle');
+      }
+    }, 1000);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [formData, reportNumber, logo]);
+
+  // Optimized mobile detection with proper cleanup
+  useEffect(() => {
     const checkIfMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
-    
-    // Comprobar al cargar
+
     checkIfMobile();
-    
-    // Comprobar al cambiar el tamaño de la ventana
-    window.addEventListener('resize', checkIfMobile);
-    
+
+    let mobileCheckTimeout: ReturnType<typeof setTimeout>;
+    const debouncedResize = () => {
+      clearTimeout(mobileCheckTimeout);
+      mobileCheckTimeout = setTimeout(checkIfMobile, 100);
+    };
+
+    window.addEventListener('resize', debouncedResize);
+
     return () => {
-      window.removeEventListener('resize', checkIfMobile);
+      window.removeEventListener('resize', debouncedResize);
+      clearTimeout(mobileCheckTimeout);
     };
   }, []);
 
-  type FileInputEvent = React.ChangeEvent<HTMLInputElement>;
+  const handleReportNumberChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value);
+    setReportNumber(value && value > 0 ? value : 1);
+  }, []);
 
-  // Función para manejar el cambio en el número de reporte
-const handleReportNumberChange = (e) => {
-  const value = parseInt(e.target.value);
-  // Asegurarse de que el valor sea un número positivo
-  if (value && value > 0) {
-    setReportNumber(value);
-  } else {
-    setReportNumber(1); // Valor por defecto si no es válido
-  }
-};
-
-  const handleLogoChange = (e: FileInputEvent) => {
+  const handleLogoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Check file size
+      if (file.size > 2 * 1024 * 1024) {
+        alert('El logo es muy grande. Máximo 2MB.');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (event) => {
-      if (event.target && event.target.result) { 
-        setLogo(event.target.result as string);
-       }
+        const result = event.target?.result;
+        if (typeof result === 'string') {
+          setLogo(result);
+        }
       };
       reader.readAsDataURL(file);
     }
-  };
+  }, []);
 
-  const handleFieldChange = (field: string, value: string | number | boolean | null) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  const handleFieldChange = useCallback((field: string, value: unknown) => {
+    setFormData((prev: FormData) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handleServiceChange = useCallback((services: string[]) => {
+    setFormData((prev: FormData) => ({ ...prev, selectedServices: services }));
+  }, []);
 
   const companyInfo = {
     name: "Ion Energy S.A.S",
-    address: "CALLE 73 65-39 ",
+    address: "CALLE 73 65-39",
     phone: "+57 312 4493845",
     email: "comercial@ionenergy.com.co",
-  };
-  
-  interface FormData {
-    serviceType?: string;
-    equipmentBrand?: string;
-    equipmentModel?: string;
-    equipmentSerial?: string;
-    equipmentUbicacion?: string;
-    description?: string;
-
-     // Datos del cliente
-  clientName: string;
-  clientEmail: string;
-  clientPhone: string;
-  clientAddress: string;
-  
-  // Parámetros eléctricos - Voltaje de entrada
-  voltageInL1: string;
-  voltageInL2: string;
-  voltageInL3: string;
-  voltageInFF: string;
-  
-  // Parámetros eléctricos - Corriente de entrada
-  currentInL1: string;
-  currentInL2: string;
-  currentInL3: string;
-  currentInN: string;
-  
-  // Parámetros eléctricos - Voltaje de salida
-  voltageOutL1: string;
-  voltageOutL2: string;
-  voltageOutL3: string;
-  voltageOutFF: string;
-  
-  // Parámetros eléctricos - Corriente de salida
-  currentOutL1: string;
-  currentOutL2: string;
-  currentOutL3: string;
-  currentOutN: string;
-  
-  // Parámetros de batería
-  batteryVoltageTotal: string;
-  batteryVoltageTest: string;
-  batteryCurrentDischarge: string;
-  batteryCurrentTest: string;
-  batteryQuantity: string;
-  batteryReference: string;
-  batteryAutonomy: string;
-  batteryFecha: string;
-  rectifierStatus: string;
-  chargerStatus: string;
-  inverterStatus: string;
-  batteryStatus: string;
-  
-  // Recomendaciones
-  recommendations: string;
-  
-  // Firmas
-  clientSignatureName: string;
-  clientSignatureId: string;
-  technicianName: string;
-  technicianId: string;
-}
-
- // Función para generar PDF optimizada sin espacios en blanco
-const generatePDF = async () => {
-  const form = formRef.current;
-  if (!form) return;
-
-  // Crear documento PDF
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const margins = { top: 10, right: 10, bottom: 15, left: 10 }; // Aumentar margen inferior para pie de página
-  let yPos = margins.top;
-
-  // Función para comprobar si se necesita una nueva página
-  const checkNewPage = (requiredSpace) => {
-    if (yPos + requiredSpace > pageHeight - margins.bottom) {
-      pdf.addPage();
-      yPos = margins.top;
-      return true;
-    }
-    return false;
-  };
-
-  // Capturar el encabezado - minimizar su altura
-  const headerElement = (form as HTMLElement).querySelector('.header');
-  if (headerElement) {
-    const headerCanvas = await html2canvas(headerElement as HTMLElement);
-    const headerImgData = headerCanvas.toDataURL('image/png');
-    const headerHeight = 40; 
-    pdf.addImage(headerImgData, 'PNG', margins.left, yPos, pageWidth - (margins.left + margins.right), headerHeight);
-    yPos += headerHeight + 5; // Menor espacio después del encabezado
-  }
-
-  // Sección de información del cliente (compacta)
-  pdf.setFontSize(12); // Reducir tamaño de fuente
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Información del Cliente', margins.left, yPos);
-  yPos += 5; // Reducir espacio después del título
-  
-  pdf.setFontSize(9); // Tamaño más pequeño para detalles
-  pdf.setFont('helvetica', 'normal');
-  
-  // Crear mapa de información del cliente filtrando valores vacíos
-  const clientInfo = {
-    "Empresa": formData.clientCompany || '-',
-    "Dirección": formData.clientAddress || '-',
-    "Ciudad": formData.clientCity || '-',
-    "Contacto": formData.clientContact || '-',
-    "Email": formData.clientEmail || '-',
-    "Teléfono": formData.clientPhone || '-'
-  };
-  
-  // Convertir a array de items para su layout
-  const clientInfoItems = Object.entries(clientInfo)
-    .filter(([_, value]) => value !== '-') // Solo incluir valores no vacíos
-    .map(([label, value]) => ({ label, value }));
-  
-  // Calcular dimensiones de columna optimizadas
-  const clientColWidth = (pageWidth - (margins.left + margins.right)) / 2;
-  
-  // Determinar elementos por columna - distribuir equitativamente
-  const itemsPerColumn = Math.ceil(clientInfoItems.length / 2);
-  
-  // Organizar info del cliente en dos columnas
-  const firstColItems = clientInfoItems.slice(0, itemsPerColumn);
-  const secondColItems = clientInfoItems.slice(itemsPerColumn);
-  
-  const rowHeight = 4; // Reducir altura de fila
-  let maxRowsUsed = 0;
-  
-  // Dibujar elementos en primera columna
-  firstColItems.forEach((item, index) => {
-    pdf.text(`${item.label}: ${item.value}`, margins.left, yPos + (index * rowHeight));
-    maxRowsUsed = Math.max(maxRowsUsed, index + 1);
-  });
-  
-  // Dibujar elementos en segunda columna
-  secondColItems.forEach((item, index) => {
-    pdf.text(`${item.label}: ${item.value}`, margins.left + clientColWidth, yPos + (index * rowHeight));
-    maxRowsUsed = Math.max(maxRowsUsed, index + 1);
-  });
-  
-  yPos += (maxRowsUsed * rowHeight) + 5; // Menor espacio después de la sección
-
-  // Detalles del servicio - compactar
-  pdf.setFontSize(12);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Detalles del Servicio', margins.left, yPos);
-  yPos += 7;
-  
-  // Primero destacar el tipo de servicio
-  pdf.setFontSize(12);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Tipo de Servicio:', margins.left, yPos);
-
-  // Agregar el valor del tipo de servicio a la derecha
-  pdf.setFont('helvetica', 'normal');
-  const serviceType = formData.serviceType ? formData.serviceType.charAt(0).toUpperCase() + formData.serviceType.slice(1) : '-';
-  pdf.text(serviceType, margins.left + 35, yPos);
-
-  yPos += 3; // Espacio después del tipo de servicio
-
-  pdf.setFontSize(8);
-  pdf.setFont('helvetica', 'normal');
-
-  // Calcular dimensiones de celda para diseño de 4 columnas (ahora sin el tipo de servicio)
-  const serviceColWidth = (pageWidth - (margins.left + margins.right)) / 4;
-  
-  // Filtrar valores vacíos para mostrar solo información relevante
-  const serviceParams = [
-    { label: 'Marca', value: formData.equipmentBrand || null }, 
-    { label: 'Modelo Equipo', value: formData.equipmentModel || null },
-    { label: 'Serial Equipo', value: formData.equipmentSerial || null },
-    { label: 'Ubicacion', value: formData.equipmentUbicacion || null }
-  ].filter(param => param.value !== null);
-  
-  // Si hay datos de servicio, mostrarlos en una fila compacta
-  if (serviceParams.length > 0) {
-    const serviceColWidth = (pageWidth - (margins.left + margins.right)) / serviceParams.length;
-    
-    // Fondo para detalles del servicio
-    pdf.setFillColor(245, 245, 245);
-    pdf.rect(margins.left, yPos, pageWidth - (margins.left + margins.right), rowHeight * 1.5, 'F');
-    
-    // Mostrar parámetros del servicio
-    serviceParams.forEach((param, index) => {
-      const xPos = margins.left + (index * serviceColWidth);
-      pdf.text(`${param.label}: ${param.value}`, xPos + 2, yPos + (rowHeight * 0.9));
-    });
-    
-    yPos += (rowHeight * 1.5) + 5;
-  } else {
-    // Si no hay datos, mostrar mensaje
-    pdf.text("Sin información de servicio", margins.left, yPos);
-    yPos += rowHeight + 3;
-  }
-
-  // Verificar si tenemos parámetros eléctricos para mostrar
-  const hasElectricalParams = [
-    formData.voltageInL1, formData.voltageInL2, formData.voltageInL3, formData.voltageInFF,
-    formData.currentInL1, formData.currentInL2, formData.currentInL3, formData.currentInN,
-    formData.voltageOutL1, formData.voltageOutL2, formData.voltageOutL3, formData.voltageOutFF,
-    formData.currentOutL1, formData.currentOutL2, formData.currentOutL3, formData.currentOutN
-  ].some(param => param);
-
-  // Sección de parámetros eléctricos - solo mostrar si hay datos
-  if (hasElectricalParams) {
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Parámetros Eléctricos', margins.left, yPos);
-    yPos += 5;
-    
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'normal');
-
-    // Función optimizada para tablas de parámetros
-    const createParameterTable = (title, data, startY) => {
-      // Verificar si todos los valores están vacíos
-      if (data.every(val => !val || val === '-')) {
-        return startY; // No dibujar tabla vacía
-      }
-      
-      // Verificar si necesitamos cambiar de página
-      if (checkNewPage(15)) {
-        startY = yPos;
-      }
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(title, margins.left, startY);
-      pdf.setFont('helvetica', 'normal');
-      
-      const headers = ['L1', 'L2', 'L3', 'N/T'];
-      const tableWidth = pageWidth - (margins.left + margins.right);
-      const cellWidth = tableWidth / headers.length;
-      const cellHeight = 6; // Reducir altura de celda
-      
-      // Encabezados de tabla
-      pdf.setFillColor(240, 240, 240);
-      pdf.rect(margins.left, startY + 1.5, tableWidth, cellHeight, 'F');
-      
-      headers.forEach((header, i) => {
-        const xPos = margins.left + (i * cellWidth);
-        pdf.text(header, xPos + (cellWidth / 2), startY + 5.5, { align: 'center' });
-      });
-      
-      // Datos de tabla
-      data.forEach((value, i) => {
-        const xPos = margins.left + (i * cellWidth);
-        pdf.text(value || '-', xPos + (cellWidth / 2), startY + 5.5 + cellHeight, { align: 'center' });
-      });
-      
-      return startY + (2 * cellHeight) + 1;
-    };
-
-    // Tablas de parámetros eléctricos - solo mostrar si tienen valores
-    if ([formData.voltageInL1, formData.voltageInL2, formData.voltageInL3, formData.voltageInFF].some(param => param)) {
-      yPos = createParameterTable('Voltaje de Entrada (V)', [
-        String(formData.voltageInL1 || '-'),
-        String(formData.voltageInL2 || '-'),
-        String(formData.voltageInL3 || '-'),
-        String(formData.voltageInFF || '-')
-      ], yPos);
-    }
-    
-    if ([formData.currentInL1, formData.currentInL2, formData.currentInL3, formData.currentInN].some(param => param)) {
-      yPos = createParameterTable('Corriente de Entrada (A)', [
-        String(formData.currentInL1 || '-'),
-        String(formData.currentInL2 || '-'),
-        String(formData.currentInL3 || '-'),
-        String(formData.currentInN || '-')
-      ], yPos + 2);
-    }
-    
-    if ([formData.voltageOutL1, formData.voltageOutL2, formData.voltageOutL3, formData.voltageOutFF].some(param => param)) {
-      yPos = createParameterTable('Voltaje de Salida (V)', [
-        String(formData.voltageOutL1 || '-'),
-        String(formData.voltageOutL2 || '-'),
-        String(formData.voltageOutL3 || '-'),
-        String(formData.voltageOutFF || '-')
-      ], yPos + 2);
-    }
-    
-    if ([formData.currentOutL1, formData.currentOutL2, formData.currentOutL3, formData.currentOutN].some(param => param)) {
-      yPos = createParameterTable('Corriente de Salida (A)', [
-        String(formData.currentOutL1 || '-'),
-        String(formData.currentOutL2 || '-'),
-        String(formData.currentOutL3 || '-'),
-        String(formData.currentOutN || '-')
-      ], yPos + 2);
-    }
-  }
-
-  // Verificar si hay datos de batería
-  const hasBatteryParams = [
-    formData.batteryVoltageTotal, formData.batteryVoltageTest, 
-    formData.batteryCurrentDischarge, formData.batteryCurrentTest,
-    formData.batteryQuantity, formData.batteryReference, 
-    formData.batteryAutonomy, formData.batteryFecha,
-    formData.rectifierStatus, formData.chargerStatus, 
-    formData.inverterStatus, formData.batteryStatus
-  ].some(param => param);
-
-  // Parámetros de batería - solo mostrar si hay datos
-  if (hasBatteryParams) {
-    // Verificar espacio para nueva sección
-    if (checkNewPage(30)) {
-      // Ya estamos en una nueva página, yPos ya está actualizado
-    } else {
-      yPos += 5; // Pequeño espacio antes de la sección
-    }
-    
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Parámetros de Baterías', margins.left, yPos);
-    yPos += 5;
-    
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'normal');
-    
-    // Filtrar parámetros vacíos para mostrar solo información relevante
-    const batteryParams = [
-      { label: 'Voltaje Total (V)', value: formData.batteryVoltageTotal || null },
-      { label: 'Voltaje Descarga (V)', value: formData.batteryVoltageTest || null },
-      { label: 'Corriente Descarga (A)', value: formData.batteryCurrentDischarge || null },
-      { label: 'Corriente Carga (A)', value: formData.batteryCurrentTest || null },
-      { label: 'Cantidad', value: formData.batteryQuantity || null },
-      { label: 'Referencia (Ah)', value: formData.batteryReference || null },
-      { label: 'Autonomía (min)', value: formData.batteryAutonomy || null },
-      { label: 'Fecha Bateria', value: formData.batteryFecha || null }
-    ].filter(param => param.value !== null);
-    
-    if (batteryParams.length > 0) {
-      // Determinar número de columnas óptimo según cantidad de parámetros
-      const columns = Math.min(4, batteryParams.length);
-      const batteryColWidth = (pageWidth - (margins.left + margins.right)) / columns;
-      
-      // Distribuir parámetros en filas y columnas
-      for (let i = 0; i < batteryParams.length; i++) {
-        const row = Math.floor(i / columns);
-        const col = i % columns;
-        const param = batteryParams[i];
-        
-        const xPos = margins.left + (col * batteryColWidth);
-        const paramYPos = yPos + (row * rowHeight * 1.1);
-        
-        // Si una nueva fila excede el espacio disponible, crear nueva página
-        if (row > 0 && col === 0 && checkNewPage(rowHeight * 1.1)) {
-          // Ya estamos en nueva página, paramYPos se debe recalcular
-          pdf.text(`${param.label}: ${param.value}`, xPos, yPos);
-        } else {
-          pdf.text(`${param.label}: ${param.value}`, xPos, paramYPos);
-        }
-      }
-      
-      // Actualizar posición después de la tabla de baterías
-      const rows = Math.ceil(batteryParams.length / columns);
-      yPos += (rows * rowHeight * 1.1) + 3;
-    } else {
-      pdf.text("Sin información de baterías", margins.left, yPos);
-      yPos += rowHeight + 3;
-    }
-  }
-    // Sección de estado del equipo
-    if (yPos > pageHeight - 50) {
-      pdf.addPage();
-      yPos = margins.top;
-    }
-
-    pdf.setFontSize(14);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Estado del Equipo', margins.left, yPos);
-    yPos += 7;
-
-    pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'normal');
-
-    // Calcular dimensiones de celda para diseño de 4 columnas
-    const statusColWidth = (pageWidth - (margins.left + margins.right)) / 4;
-
-    // Crear arreglo de estados para mostrar
-    const statusParams = [
-      { 
-        label: 'Rectificador', 
-        value: formData.rectifierStatus ? 
-          formData.rectifierStatus.charAt(0).toUpperCase() + formData.rectifierStatus.slice(1) : 
-          '-' 
-      },
-      { 
-        label: 'Cargador', 
-        value: formData.chargerStatus ? 
-          formData.chargerStatus.charAt(0).toUpperCase() + formData.chargerStatus.slice(1) : 
-          '-' 
-      },
-      { 
-        label: 'Inversor', 
-        value: formData.inverterStatus ? 
-          formData.inverterStatus.charAt(0).toUpperCase() + formData.inverterStatus.slice(1) : 
-          '-' 
-      },
-      { 
-        label: 'Batería', 
-        value: formData.batteryStatus ? 
-          formData.batteryStatus.charAt(0).toUpperCase() + formData.batteryStatus.slice(1) : 
-          '-' 
-      }
-    ];
-
-    // Dibujar un fondo para la fila de estados
-    pdf.setFillColor(245, 245, 245);
-    pdf.rect(margins.left, yPos, pageWidth - (margins.left + margins.right), rowHeight * 1.5, 'F');
-
-    // Dibujar los estados en una cuadrícula 4x1
-    statusParams.forEach((param, index) => {
-      const xPos = margins.left + (index * statusColWidth);
-      pdf.text(`${param.label}: ${param.value}`, xPos + 3, yPos + (rowHeight * 0.8));
-    });
-
-    yPos += (rowHeight * 1.5) + 10; // Aumentar el espacio antes de la siguiente sección
-
-  // Sección de descripción - solo si hay contenido
-  if (formData.description) {
-    // Verificar espacio necesario (estimado)
-    const estimatedLines = Math.ceil(String(formData.description).length / 50); // aprox. 50 chars por línea
-    const estimatedHeight = estimatedLines * 4 + 15; // altura de línea * número de líneas + cabecera
-    
-    if (checkNewPage(estimatedHeight)) {
-      // Ya estamos en nueva página
-    } else {
-      yPos += 5; // Pequeño espacio antes de la sección
-    }
-    
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Descripción del Trabajo', margins.left, yPos);
-    yPos += 5;
-    
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'normal');
-    
-    const textWidth = pageWidth - (margins.left + margins.right) - 6; // Margen interno reducido
-    const descriptionLines = pdf.splitTextToSize(String(formData.description), textWidth);
-    
-    // Calcular altura necesaria
-    const lineHeight = 4;
-    const descHeight = (descriptionLines.length * lineHeight) + 6; // Margen interno reducido
-    
-    // Fondo para descripción
-    pdf.setFillColor(245, 245, 245);
-    pdf.rect(margins.left, yPos, textWidth + 6, descHeight, 'F');
-    
-    // Borde ligero
-    pdf.setDrawColor(220, 220, 220);
-    pdf.rect(margins.left, yPos, textWidth + 6, descHeight);
-    
-    // Texto de descripción
-    pdf.text(descriptionLines, margins.left + 3, yPos + 5);
-    
-    yPos += descHeight + 3;
-  }
-  
-  // Recomendaciones - solo si hay contenido
-  if (formData.recommendations) {
-    // Verificar espacio necesario (estimado)
-    const estimatedLines = Math.ceil(String(formData.recommendations).length / 50);
-    const estimatedHeight = estimatedLines * 4 + 15;
-    
-    if (checkNewPage(estimatedHeight)) {
-      // Ya estamos en nueva página
-    } else {
-      yPos += 5;
-    }
-    
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Recomendaciones', margins.left, yPos);
-    yPos += 5;
-    
-    pdf.setFontSize(9);
-    pdf.setFont('helvetica', 'normal');
-    
-    const textWidth = pageWidth - (margins.left + margins.right) - 6;
-    const recommendationLines = pdf.splitTextToSize(String(formData.recommendations), textWidth);
-    
-    const lineHeight = 4;
-    const recHeight = (recommendationLines.length * lineHeight) + 6;
-    
-    pdf.setFillColor(245, 245, 245);
-    pdf.rect(margins.left, yPos, textWidth + 6, recHeight, 'F');
-    
-    pdf.setDrawColor(220, 220, 220);
-    pdf.rect(margins.left, yPos, textWidth + 6, recHeight);
-    
-    pdf.text(recommendationLines, margins.left + 3, yPos + 5);
-    
-    yPos += recHeight + 5;
-  }
-
-  // Sección de fotos - solo si hay fotos
-  if (formData.photos && formData.photos.length > 0) {
-    // Verificar espacio para título
-    if (checkNewPage(10)) {
-      // Ya estamos en nueva página
-    } else {
-      yPos += 3;
-    }
-    
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Registro Fotográfico', margins.left, yPos);
-    yPos += 7;
-    
-    // Layout de fotos optimizado
-    const photosPerRow = 2;
-    const photoPadding = 3; // Menos espacio entre fotos
-    const availableWidth = pageWidth - (margins.left + margins.right);
-    const photoWidth = (availableWidth - ((photosPerRow - 1) * photoPadding)) / photosPerRow;
-    const photoHeight = photoWidth * 0.75; // Mantener proporción 4:3
-    const descriptionHeight = 6; // Menor altura para descripción
-    const photoBlockHeight = photoHeight + descriptionHeight + 2;
-    
-    // Variables para seguimiento de posición
-    let currentRow = 0;
-    let rowStartY = yPos;
-
-    // Procesar cada foto
-    for (let i = 0; i < formData.photos.length; i++) {
-      const photo = formData.photos[i];
-      const col = i % photosPerRow;
-      
-      // Si comenzamos una nueva fila
-    if (col === 0) {
-      // Calcular la posición Y para esta fila
-      rowStartY = yPos + (currentRow * photoBlockHeight);
-      
-      // Verificar si necesitamos nueva página para esta fila
-      if (rowStartY + photoBlockHeight > pageHeight - margins.bottom) {
-        pdf.addPage();
-        yPos = margins.top;
-        rowStartY = yPos;
-        currentRow = 0; // Reiniciar conteo de filas en la nueva página
-      }
-    }
-
-      // Coordenadas X,Y
-      const xPos = margins.left + (col * (photoWidth + photoPadding));
-      
-      // Añadir la foto
-      try {
-        if (photo.url && typeof photo.url === 'string') {
-          pdf.addImage(photo.url, 'JPEG', xPos, rowStartY, photoWidth, photoHeight);
-          
-          // Borde fino para la foto
-          pdf.setDrawColor(200, 200, 200);
-          pdf.rect(xPos, rowStartY, photoWidth, photoHeight);
-          
-          // Fondo y texto de descripción
-          pdf.setFillColor(245, 245, 245);
-          pdf.rect(xPos, rowStartY + photoHeight, photoWidth, descriptionHeight, 'F');
-          
-          pdf.setFontSize(7); // Texto más pequeño para descripciones
-          const descText = photo.description || `Foto ${i + 1}`;
-          // Truncar texto largo
-          const maxChars = Math.floor(photoWidth / 1.6);
-          const truncatedText = descText.length > maxChars ? 
-            descText.substring(0, maxChars - 3) + '...' : descText;
-          pdf.text(truncatedText, xPos + (photoWidth / 2), rowStartY + photoHeight + 4, { align: 'center' });
-        }
-      } catch (error) {
-        console.error('Error adding image:', error);
-        pdf.setFillColor(240, 240, 240);
-        pdf.rect(xPos, rowStartY, photoWidth, photoHeight, 'F');
-        pdf.setFontSize(8);
-        pdf.text('Error imagen', xPos + (photoWidth/2), rowStartY + (photoHeight/2), { align: 'center' });
-      }
-      
-      // Si es la última columna de la fila, incrementar contador de filas
-    if (col === photosPerRow - 1 || i === formData.photos.length - 1) {
-      currentRow++;
-    }
-    
-      // Actualizar yPos basado en la última fila de fotos
-      if (i === formData.photos.length - 1) {
-        yPos = rowStartY + photoBlockHeight + 5;
-      }
-    }
-  }
-
-  // Sección de firmas
-  const signatureHeight = 25; // Altura reducida para firmas
-  const estimatedSignatureSection = 70; // Estimación total de la sección
-  
-  // Verificar si queda suficiente espacio en la página actual
-  if (checkNewPage(estimatedSignatureSection)) {
-    // Ya estamos en nueva página
-  } else {
-    yPos += 5;
-  }
-  
-  pdf.setFontSize(12);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Firmas de Conformidad', margins.left, yPos);
-  yPos += 7;
-  
-  // Calcular dimensiones para firmas
-  const signatureWidth = (pageWidth - (margins.left + margins.right) - 5) / 2;
-  
-  // Firma del cliente
-  if (formData.clientSignature) {
-    pdf.addImage(formData.clientSignature, 'PNG', margins.left, yPos, signatureWidth, signatureHeight);
-  } else {
-    pdf.setDrawColor(200, 200, 200);
-    pdf.rect(margins.left, yPos, signatureWidth, signatureHeight);
-  }
-  
-  pdf.setFontSize(10);
-  pdf.text('Cliente', margins.left + (signatureWidth / 2), yPos - 3, { align: 'center' });
-  
-  // Firma del técnico
-  const techSigX = margins.left + signatureWidth + 5;
-  
-  if (formData.technicianSignature) {
-    pdf.addImage(formData.technicianSignature, 'PNG', techSigX, yPos, signatureWidth, signatureHeight);
-  } else {
-    pdf.setDrawColor(200, 200, 200);
-    pdf.rect(techSigX, yPos, signatureWidth, signatureHeight);
-  }
-  
-  pdf.setFontSize(10);
-  pdf.text('Técnico', techSigX + (signatureWidth / 2), yPos - 3, { align: 'center' });
-  
-  yPos += signatureHeight + 3;
-  
-  // Información de firmantes - más compacta
-  pdf.setFontSize(8);
-  pdf.setFont('helvetica', 'normal');
-  
-  const clientName = formData.clientSignatureName || 'Nombre del Cliente';
-  const clientId = formData.clientSignatureId || 'Identificación';
-  pdf.text(clientName, margins.left + (signatureWidth / 2), yPos, { align: 'center' });
-  pdf.text(clientId, margins.left + (signatureWidth / 2), yPos + 4, { align: 'center' });
-  
-  const techName = formData.technicianName || 'Nombre del Técnico';
-  const techId = formData.technicianId || 'Identificación';
-  pdf.text(techName, techSigX + (signatureWidth / 2), yPos, { align: 'center' });
-  pdf.text(techId, techSigX + (signatureWidth / 2), yPos + 4, { align: 'center' });
-  
-  // Pie de página en todas las páginas
-  const totalPages = pdf.internal.getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
-    pdf.setPage(i);
-    pdf.setFontSize(7); // Texto más pequeño para pie de página
-    pdf.setTextColor(100, 100, 100);
-    
-    // Mostrar número de página, numero de reporte y fecha, y nombre de empresa en una línea compacta
-    pdf.text(`Reporte N° ${String(reportNumber).padStart(4, '0')} | Fecha: ${currentDate} | Página ${i} de ${totalPages} | ${companyInfo.name}`, 
-      pageWidth / 2, pageHeight - 5, { align: 'center' });
-  }
-
-  // Guardar el PDF
-  const deviceType = isMobile ? 'mobile' : 'desktop';
-  pdf.save(`RT Nº ${String(reportNumber).padStart(4, '0')}-${deviceType}.pdf`);
-};
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    await generatePDF();
-    setReportNumber(prev => prev + 1);
   };
 
   const electricalParameters = {
@@ -1883,22 +906,966 @@ const generatePDF = async () => {
     ]
   };
 
-  // Renderizado principal con modo responsivo
+  const _handleClearForm = useCallback(() => {
+    const choice = window.confirm(
+      'Aceptar → Limpiar solo datos del equipo (mantiene cliente)\nCancelar → No hacer nada'
+    );
+    if (choice) {
+      setFormData((prev: FormData) => ({
+        clientCompany: prev.clientCompany,
+        clientContact: prev.clientContact,
+        clientAddress: prev.clientAddress,
+        clientEmail:   prev.clientEmail,
+        clientCity:    prev.clientCity,
+        clientPhone:   prev.clientPhone,
+      }));
+    }
+  }, []);
+
+
+  // PDF Generation Function
+  const generatePDF = useCallback(async () => {
+    // Create a new jsPDF instance
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 15;
+    const contentWidth = pageWidth - (margin * 2);
+    let yPosition = margin;
+
+    // Helper function to add section divider line
+    const addSectionDivider = () => {
+      yPosition += 3;
+      pdf.setLineWidth(0.3);
+      pdf.setDrawColor(150, 150, 150); // Gray color
+      pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 8;
+    };
+
+    // Helper function to add footer to each page
+    const addFooter = (pageNumber: number, totalPages: number) => {
+      const footerY = pageHeight - 10; // 10mm from bottom
+      
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 100, 100); // Gray color
+      
+      // Left: Report number and date
+      const reportInfo = `Reporte N° ${String(reportNumber).padStart(4, '0')} | ${currentDate}`;
+      pdf.text(reportInfo, margin, footerY);
+      
+      // Center: Company name
+      pdf.text(companyInfo.name, pageWidth / 2, footerY, { align: 'center' });
+      
+      // Right: Page number
+      pdf.text(`Página ${pageNumber} de ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
+      
+      // Reset text color to black
+      pdf.setTextColor(0, 0, 0);
+    };
+
+    // Helper function to add new page if needed
+    const checkPageBreak = (requiredHeight: number) => {
+      if (yPosition + requiredHeight > pageHeight - margin - 15) {
+        pdf.addPage();
+        yPosition = margin;
+        return true;
+      }
+      return false;
+    };
+
+    // Helper function to add text with word wrap
+    const addText = (text: string, x: number, y: number, maxWidth = contentWidth, options: { fontSize?: number; lineHeight?: number; bold?: boolean; align?: string } = {}) => {
+      const fontSize = options.fontSize || 10;
+      const lineHeight = options.lineHeight || fontSize * 0.4;
+      
+      pdf.setFontSize(fontSize);
+      if (options.bold) pdf.setFont('helvetica', 'bold');
+      else pdf.setFont('helvetica', 'normal');
+
+      if (text) {
+        const lines = pdf.splitTextToSize(text, maxWidth);
+        lines.forEach((line: string, index: number) => {
+          checkPageBreak(lineHeight);
+          pdf.text(line, x, y + (index * lineHeight));
+          yPosition = Math.max(yPosition, y + (index * lineHeight) + lineHeight);
+        });
+      }
+      return yPosition;
+    };
+
+    // Add company logo if available
+    if (logo) {
+      try {
+        pdf.addImage(logo, 'JPEG', margin, yPosition, 40, 20);
+      } catch (_e) {
+        console.warn('Could not add logo to PDF');
+      }
+    }
+
+    // Title and report info (center)
+    pdf.setFontSize(18);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('REPORTE TÉCNICO', pageWidth / 2, yPosition + 8, { align: 'center' });
+    
+    pdf.setFontSize(12);
+    pdf.text(`N° Reporte: ${String(reportNumber).padStart(4, '0')}`, pageWidth / 2, yPosition + 16, { align: 'center' });
+    
+    pdf.setFontSize(10);
+    pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 22, { align: 'center' });
+
+    // Company info (top right)
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(companyInfo.name, pageWidth - margin, yPosition + 5, { align: 'right' });
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(companyInfo.address, pageWidth - margin, yPosition + 10, { align: 'right' });
+    pdf.text(companyInfo.phone, pageWidth - margin, yPosition + 14, { align: 'right' });
+    pdf.text(companyInfo.email, pageWidth - margin, yPosition + 18, { align: 'right' });
+
+    yPosition += 35;
+
+    // Horizontal line
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 10;
+
+    // Client Information Section
+    checkPageBreak(30);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('INFORMACIÓN DEL CLIENTE', margin, yPosition);
+    yPosition += 8;
+
+    const clientData: [string, string][] = [
+      ['Empresa:', formData.clientCompany || 'N/A'],
+      ['Contacto:', formData.clientContact || 'N/A'],
+      ['Dirección:', formData.clientAddress || 'N/A'],
+      ['Email:', formData.clientEmail || 'N/A'],
+      ['Ciudad:', formData.clientCity || 'N/A'],
+      ['Teléfono:', formData.clientPhone || 'N/A']
+    ];
+
+    clientData.forEach(([label, value], index: number) => {
+      checkPageBreak(6);
+      const columnWidth = contentWidth / 2;
+      const xPos = margin + ((index % 2) * columnWidth);
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      pdf.text(label, xPos, yPosition);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(value, xPos + 25, yPosition);
+      
+      // Move to next row after every 2 items
+      if (index % 2 === 1) {
+        yPosition += 5;
+      }
+    });
+
+    // If odd number of items, still move to next line
+    if (clientData.length % 2 === 1) {
+      yPosition += 5;
+    }
+
+    yPosition += 5;
+
+    // Add section divider
+    addSectionDivider();
+
+    // Service Type Section
+    if (formData.selectedServices && formData.selectedServices.length > 0) {
+      checkPageBreak(20);
+      
+      // Join all services in a single line with larger font
+      const servicesText = formData.selectedServices.join(' • ');
+      
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('TIPO DE SERVICIO: ', margin, yPosition);
+      
+      // Calculate width of the title to position services next to it
+      const titleWidth = pdf.getTextWidth('TIPO DE SERVICIO: ');
+      
+      pdf.setFontSize(11);
+      pdf.setFont('helvetica', 'bold');
+      
+      // Check if text fits in remaining space on the same line
+      const remainingWidth = contentWidth - titleWidth;
+      const textWidth = pdf.getTextWidth(servicesText);
+      
+      if (textWidth <= remainingWidth) {
+        // Single line display next to title
+        pdf.text(servicesText, margin + titleWidth, yPosition);
+        yPosition += 8;
+      } else {
+        // Move to next line if too long
+        yPosition += 6;
+        const lines = pdf.splitTextToSize(servicesText, contentWidth);
+        lines.forEach((line: string) => {
+          checkPageBreak(6);
+          pdf.text(line, margin, yPosition);
+          yPosition += 6;
+        });
+      }
+      
+      yPosition += 2;
+    }
+
+    // Service Info Section (OT, technician, hours, next visit)
+    checkPageBreak(20);
+    const hasServiceInfo = formData.workOrder || formData.technicianSelect || formData.timeStart || formData.nextVisit;
+    if (hasServiceInfo) {
+      const infoData: [string, string][] = [
+        ['OT:', formData.workOrder || 'N/A'],
+        ['Técnico:', technician || formData.technicianName || 'N/A'],
+        ['Hora Entrada:', formData.timeStart || 'N/A'],
+        ['Hora Salida:', formData.timeEnd || 'N/A'],
+      ];
+
+      // Calculate duration
+      let durationText = 'N/A';
+      if (formData.timeStart && formData.timeEnd) {
+        const [sh, sm] = formData.timeStart.split(':').map(Number);
+        const [eh, em] = formData.timeEnd.split(':').map(Number);
+        const total = (eh * 60 + em) - (sh * 60 + sm);
+        if (total > 0) {
+          const h = Math.floor(total / 60);
+          const m = total % 60;
+          durationText = h > 0 ? `${h}h ${m}min` : `${m}min`;
+        }
+      }
+      infoData.push(['Duración:', durationText]);
+      if (formData.nextVisit) {
+        const nv = new Date(formData.nextVisit + 'T12:00:00').toLocaleDateString('es-CO');
+        infoData.push(['Próx. Visita:', nv]);
+      }
+
+      const infoColW = contentWidth / 3;
+      infoData.forEach(([label, value], idx: number) => {
+        const col = idx % 3;
+        const row = Math.floor(idx / 3);
+        const xPos = margin + col * infoColW;
+        const yPos = yPosition + row * 6;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8);
+        pdf.text(label, xPos, yPos);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(value, xPos + 22, yPos);
+      });
+      yPosition += Math.ceil(infoData.length / 3) * 6 + 4;
+      addSectionDivider();
+    }
+
+    // Materials Section
+    if (formData.materials && formData.materials.length > 0) {
+      checkPageBreak(15 + formData.materials.length * 6);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('MATERIALES Y REPUESTOS UTILIZADOS', margin, yPosition);
+      yPosition += 8;
+
+      // Table header
+      pdf.setFillColor(235, 235, 235);
+      pdf.rect(margin, yPosition - 4, contentWidth, 6, 'F');
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Descripción', margin + 2, yPosition);
+      pdf.text('Cant.', margin + contentWidth * 0.65, yPosition);
+      pdf.text('Referencia', margin + contentWidth * 0.75, yPosition);
+      yPosition += 6;
+
+      // Table rows
+      formData.materials.forEach((mat, idx) => {
+        checkPageBreak(6);
+        if (idx % 2 === 0) {
+          pdf.setFillColor(250, 250, 250);
+          pdf.rect(margin, yPosition - 4, contentWidth, 6, 'F');
+        }
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(0, 0, 0);
+        const itemText = pdf.splitTextToSize(mat.item || '', contentWidth * 0.62)[0];
+        pdf.text(itemText, margin + 2, yPosition);
+        pdf.text(String(mat.qty || ''), margin + contentWidth * 0.65, yPosition);
+        pdf.text(mat.ref || '', margin + contentWidth * 0.75, yPosition);
+        yPosition += 6;
+      });
+      yPosition += 4;
+      addSectionDivider();
+    }
+    if (formData.checkedItems && formData.checkedItems.length > 0) {
+      const allGroups = [
+        { title: 'Inspección Visual', items: ['Limpieza general del equipo','Revisión de conexiones eléctricas','Revisión de ventilación y temperatura','Inspección de fusibles y breakers','Revisión de LEDs y alarmas activas'] },
+        { title: 'Pruebas Eléctricas', items: ['Prueba de transferencia automática','Medición de voltaje entrada/salida','Verificación de frecuencia','Prueba de bypass manual','Verificación de alarmas del sistema'] },
+        { title: 'Baterías', items: ['Limpieza de bornes y terminales','Medición de voltaje total','Medición por banco','Prueba de descarga','Verificación de temperatura de baterías','Revisión de fecha de fabricación'] },
+        { title: 'Documentación', items: ['Registro fotográfico completado','Parámetros eléctricos registrados','Firma del cliente obtenida','Recomendaciones documentadas'] }
+      ];
+
+      checkPageBreak(15);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('LISTA DE ACTIVIDADES', margin, yPosition);
+      yPosition += 8;
+
+      const totalItems = allGroups.reduce((acc, g) => acc + g.items.length, 0);
+      const doneItems = formData.checkedItems.length;
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(80, 80, 80);
+      pdf.text(`${doneItems} de ${totalItems} actividades completadas (${Math.round(doneItems/totalItems*100)}%)`, margin, yPosition);
+      pdf.setTextColor(0, 0, 0);
+      yPosition += 6;
+
+      const numCols = 4;
+      const colW = contentWidth / numCols;
+      const rowH = 5;
+      const groupTitleH = 7;
+
+      allGroups.forEach((group) => {
+        const numRows = Math.ceil(group.items.length / numCols);
+        const groupHeight = groupTitleH + numRows * rowH + 3;
+
+        // Page break before group if not enough space
+        if (yPosition + groupHeight > pageHeight - margin - 15) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+
+        // Group title bar
+        pdf.setFillColor(235, 235, 235);
+        pdf.rect(margin, yPosition - 4, contentWidth, 6, 'F');
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(group.title, margin + 2, yPosition);
+        yPosition += groupTitleH;
+
+        // Items in 4 columns
+        group.items.forEach((item, idx) => {
+          const col = idx % numCols;
+          const row = Math.floor(idx / numCols);
+          const xPos = margin + col * colW;
+          const yPos = yPosition + row * rowH;
+          const isChecked = (formData.checkedItems || []).includes(item);
+
+          pdf.setFontSize(7.5);
+          pdf.setFont('helvetica', 'normal');
+
+          // Check mark
+          pdf.setTextColor(isChecked ? 22 : 160, isChecked ? 158 : 160, isChecked ? 117 : 160);
+          pdf.text(isChecked ? '[OK]' : '[ ]', xPos, yPos);
+
+          // Item text — truncate to fit column
+          pdf.setTextColor(isChecked ? 100 : 40, isChecked ? 100 : 40, isChecked ? 100 : 40);
+          const maxTextWidth = colW - 14;
+          const fittedText = pdf.splitTextToSize(item, maxTextWidth)[0];
+          pdf.text(fittedText, xPos + 11, yPos);
+        });
+
+        yPosition += numRows * rowH + 4;
+        pdf.setTextColor(0, 0, 0);
+      });
+
+      yPosition += 3;
+      addSectionDivider();
+    }
+    checkPageBreak(15);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('DETALLES DEL EQUIPO', margin, yPosition);
+    yPosition += 8;
+
+    const equipmentData: [string, string][] = [
+      ['Marca:', formData.equipmentBrand || 'N/A'],
+      ['Modelo:', formData.equipmentModel || 'N/A'],
+      ['Capacidad:', formData.capacity || 'N/A'],
+      ['Serial:', formData.equipmentSerial || 'N/A'],
+      ['Ubicación:', formData.equipmentUbicacion || 'N/A']
+    ];
+
+    const equipColumnWidth = contentWidth / 5;
+const equipLabelWidth = 15; // Fixed width for labels
+const equipValueWidth = equipColumnWidth - equipLabelWidth - 2; // Space for values with margin
+
+// Helper function to fit text in available space
+const fitEquipmentText = (text: string, maxWidth: number, fontSize = 6): { text: string; fontSize: number } => {
+  pdf.setFontSize(fontSize);
+  let textWidth = pdf.getTextWidth(text);
+  
+  // If text fits, return as is
+  if (textWidth <= maxWidth) {
+    return { text, fontSize };
+  }
+  
+  // Try smaller font sizes
+  for (let size = fontSize - 1; size >= 6; size--) {
+    pdf.setFontSize(size);
+    textWidth = pdf.getTextWidth(text);
+    if (textWidth <= maxWidth) {
+      return { text, fontSize: size };
+    }
+  }
+  
+  // If still too long, truncate with ellipsis
+  pdf.setFontSize(6);
+  const ellipsis = '...';
+  const ellipsisWidth = pdf.getTextWidth(ellipsis);
+  const availableWidth = maxWidth - ellipsisWidth;
+  
+  let truncatedText = text;
+  while (pdf.getTextWidth(truncatedText) > availableWidth && truncatedText.length > 0) {
+    truncatedText = truncatedText.slice(0, -1);
+  }
+  
+  return { text: truncatedText + ellipsis, fontSize: 6 };
+};
+
+// Display all equipment details in one row (4 columns)
+equipmentData.forEach(([label, value], index: number) => {
+  const xPos = margin + (index * equipColumnWidth);
+  
+  // Display label
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(8);
+  pdf.text(label, xPos, yPosition);
+  
+  // Display value with auto-fitting
+  const fittedValue = fitEquipmentText(value, equipValueWidth, 8);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(fittedValue.fontSize);
+  pdf.text(fittedValue.text, xPos + equipLabelWidth, yPosition);
+});
+
+yPosition += 8;
+
+    // Add section divider
+    addSectionDivider();
+
+    // Electrical Parameters Section
+    checkPageBreak(40);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('PARÁMETROS ELÉCTRICOS', margin, yPosition);
+    yPosition += 8;
+
+    // Voltage Input - single row, aligned
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Voltaje de Entrada:', margin, yPosition);
+    yPosition += 6;
+
+    const voltageInput: [string, string][] = [
+      ['L1:', `${formData.voltageInL1 || '0'} V`],
+      ['L2:', `${formData.voltageInL2 || '0'} V`],
+      ['L3:', `${formData.voltageInL3 || '0'} V`],
+      ['FF:', `${formData.voltageInFF || '0'} V`]
+    ];
+
+    // Calculate equal spacing for 4 columns
+    const paramColumnWidth = contentWidth / 4;
+    const labelWidth = 15;
+
+    pdf.setFontSize(9);
+    voltageInput.forEach(([label, value], index: number) => {
+      const xPos = margin + (index * paramColumnWidth);
+      
+      // Label
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(label, xPos, yPosition);
+      
+      // Value - aligned
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(value, xPos + labelWidth, yPosition);
+    });
+    
+    yPosition += 8;
+
+    // Current Input - single row, aligned
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Corriente de Entrada:', margin, yPosition);
+    yPosition += 6;
+
+    const currentInput: [string, string][] = [
+      ['L1:', `${formData.currentInL1 || '0'} A`],
+      ['L2:', `${formData.currentInL2 || '0'} A`],
+      ['L3:', `${formData.currentInL3 || '0'} A`],
+      ['N-T:', `${formData.currentInN || '0'} V`]
+    ];
+
+    pdf.setFontSize(9);
+    currentInput.forEach(([label, value], index: number) => {
+      const xPos = margin + (index * paramColumnWidth);
+      
+      // Label
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(label, xPos, yPosition);
+      
+      // Value - aligned
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(value, xPos + labelWidth, yPosition);
+    });
+    
+    yPosition += 8;
+
+    // Voltage Output - single row, aligned
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Voltaje de Salida:', margin, yPosition);
+    yPosition += 6;
+
+    const voltageOutput: [string, string][] = [
+      ['L1:', `${formData.voltageOutL1 || '0'} V`],
+      ['L2:', `${formData.voltageOutL2 || '0'} V`],
+      ['L3:', `${formData.voltageOutL3 || '0'} V`],
+      ['FF:', `${formData.voltageOutFF || '0'} V`]
+    ];
+
+    pdf.setFontSize(9);
+    voltageOutput.forEach(([label, value], index: number) => {
+      const xPos = margin + (index * paramColumnWidth);
+      
+      // Label
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(label, xPos, yPosition);
+      
+      // Value - aligned
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(value, xPos + labelWidth, yPosition);
+    });
+    
+    yPosition += 8;
+
+    // Current Output - single row, aligned
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Corriente de Salida:', margin, yPosition);
+    yPosition += 6;
+
+    const currentOutput: [string, string][] = [
+      ['L1:', `${formData.currentOutL1 || '0'} A`],
+      ['L2:', `${formData.currentOutL2 || '0'} A`],
+      ['L3:', `${formData.currentOutL3 || '0'} A`],
+      ['N-T:', `${formData.currentOutN || '0'} V`]
+    ];
+
+    pdf.setFontSize(9);
+    currentOutput.forEach(([label, value], index: number) => {
+      const xPos = margin + (index * paramColumnWidth);
+      
+      // Label
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(label, xPos, yPosition);
+      
+      // Value - aligned
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(value, xPos + labelWidth, yPosition);
+    });
+    
+    yPosition += 4;
+
+    // Add section divider
+    addSectionDivider();
+
+    // Battery Parameters Section
+    checkPageBreak(30);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('PARÁMETROS DE BATERÍAS', margin, yPosition);
+    yPosition += 12;
+
+    const batteryData: [string, string][] = [
+      ['Voltaje Total:', `${formData.batteryVoltageTotal || '0'} VDC`],
+      ['Voltaje Descarga:', `${formData.batteryVoltageTest || '0'} VDC`],
+      ['Corriente Descarga:', `${formData.batteryCurrentDischarge || '0'} ADC`],
+      ['Corriente Carga:', `${formData.batteryCurrentTest || '0'} ADC`],
+      ['Battery string:', `${formData.batteryString || '0'} `],
+      ['Numero Bancos:', `${formData.batteryBank || '0'} `],
+      ['Cantidad:', `${formData.batteryQuantity || '0'}`],
+      ['Referencia:', `${formData.batteryReference || '0'} Ah`],
+      ['Marca Bateria:', `${formData.batteryBrand|| 'N/A'}`],
+      ['Autonomía:', `${formData.batteryAutonomy || '0'} min`],
+      ['Fecha Fabricación:', `${formData.batteryFecha || 'N/A'}`]
+    ];
+
+    // Display battery parameters in 3 columns
+    const batteryColumnWidth = contentWidth / 3;
+    const batteryLabelWidth = 35;
+    const batteryValueWidth = batteryColumnWidth - batteryLabelWidth - 3;
+
+    // Helper function to fit battery text in available space
+    const fitBatteryText = (text: string, maxWidth: number, fontSize = 8): { text: string; fontSize: number } => {
+      pdf.setFontSize(fontSize);
+      let textWidth = pdf.getTextWidth(text);
+      
+      if (textWidth <= maxWidth) {
+        return { text, fontSize };
+      }
+      
+      // Try smaller font sizes
+      for (let size = fontSize - 1; size >= 7; size--) {
+        pdf.setFontSize(size);
+        textWidth = pdf.getTextWidth(text);
+        if (textWidth <= maxWidth) {
+          return { text, fontSize: size };
+        }
+      }
+      
+      // If still too long, truncate
+      pdf.setFontSize(7);
+      const ellipsis = '...';
+      const ellipsisWidth = pdf.getTextWidth(ellipsis);
+      const availableWidth = maxWidth - ellipsisWidth;
+      
+      let truncatedText = text;
+      while (pdf.getTextWidth(truncatedText) > availableWidth && truncatedText.length > 0) {
+        truncatedText = truncatedText.slice(0, -1);
+      }
+      
+      return { text: truncatedText + ellipsis, fontSize: 7 };
+    };
+
+    batteryData.forEach(([label, value], index: number) => {
+      const columnIndex = index % 3;
+      const rowIndex = Math.floor(index / 3);
+      const xPos = margin + (columnIndex * batteryColumnWidth);
+      const currentYPos = yPosition + (rowIndex * 6);
+      
+      checkPageBreak(6);
+      
+      // Display label
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8);
+      pdf.text(label, xPos, currentYPos);
+      
+      // Display value with auto-fitting
+      const fittedValue = fitBatteryText(value, batteryValueWidth, 8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(fittedValue.fontSize);
+      pdf.text(fittedValue.text, xPos + batteryLabelWidth, currentYPos);
+    });
+
+    // Move yPosition to after all battery parameters
+    yPosition += Math.ceil(batteryData.length / 3) * 6 + 2;
+
+    // Add section divider
+    addSectionDivider();
+
+    // Equipment Status Section
+    checkPageBreak(25);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('ESTADO DEL EQUIPO', margin, yPosition);
+    yPosition += 8;
+
+    const statusData = [
+      ['Rectificador:', formData.rectifierStatus || 'N/A'],
+      ['Cargador:', formData.chargerStatus || 'N/A'],
+      ['Inversor:', formData.inverterStatus || 'N/A'],
+      ['Batería:', formData.batteryStatus || 'N/A']
+    ];
+
+    // Display equipment status in 4 columns (single row)
+    const statusColumnWidth = contentWidth / 4;
+    const statusLabelWidth = 25; // Fixed width for labels
+    const statusValueWidth = statusColumnWidth - statusLabelWidth - 2; // Space for values
+
+    // Helper function to fit status text in available space
+    const fitStatusText = (text: string, maxWidth: number, fontSize = 8): { text: string; fontSize: number } => {
+      pdf.setFontSize(fontSize);
+      let textWidth = pdf.getTextWidth(text);
+      
+      // If text fits, return as is
+      if (textWidth <= maxWidth) {
+        return { text, fontSize };
+      }
+      
+      // Try smaller font sizes
+      for (let size = fontSize - 1; size >= 7; size--) {
+        pdf.setFontSize(size);
+        textWidth = pdf.getTextWidth(text);
+        if (textWidth <= maxWidth) {
+          return { text, fontSize: size };
+        }
+      }
+      
+      // If still too long, truncate with ellipsis
+      pdf.setFontSize(7);
+      const ellipsis = '...';
+      const ellipsisWidth = pdf.getTextWidth(ellipsis);
+      const availableWidth = maxWidth - ellipsisWidth;
+      
+      let truncatedText = text;
+      while (pdf.getTextWidth(truncatedText) > availableWidth && truncatedText.length > 0) {
+        truncatedText = truncatedText.slice(0, -1);
+      }
+      
+      return { text: truncatedText + ellipsis, fontSize: 7 };
+    };
+
+    // Display all equipment status in one row (4 columns)
+    statusData.forEach(([label, value], index: number) => {
+      const xPos = margin + (index * statusColumnWidth);
+      
+      // Display label
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8);
+      pdf.text(label, xPos, yPosition);
+      
+      // Display value with auto-fitting and capitalize first letter
+      const capitalizedValue = value.charAt(0).toUpperCase() + value.slice(1);
+      const fittedValue = fitStatusText(capitalizedValue, statusValueWidth, 8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(fittedValue.fontSize);
+      pdf.text(fittedValue.text, xPos + statusLabelWidth, yPosition);
+    });
+
+    yPosition += 8;
+
+    // Add section divider
+    addSectionDivider();
+
+    // Description Section
+    if (formData.description) {
+      checkPageBreak(20);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('DESCRIPCIÓN DEL TRABAJO', margin, yPosition);
+      yPosition += 8;
+
+      yPosition = addText(String(formData.description ?? ''), margin, yPosition, contentWidth, { fontSize: 9 });
+      yPosition += 5;
+    }
+
+    // Recommendations Section
+    if (formData.recommendations) {
+      // Add section divider
+      addSectionDivider();
+      
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('RECOMENDACIONES', margin, yPosition);
+      yPosition += 8;
+
+      yPosition = addText(String(formData.recommendations ?? ''), margin, yPosition, contentWidth, { fontSize: 9 });
+      yPosition += 5;
+    }
+
+    // Photos Section
+    if (formData.photos && formData.photos.length > 0) {
+      // Add section divider
+      addSectionDivider();
+      
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('REGISTRO FOTOGRÁFICO', margin, yPosition);
+      yPosition += 10;
+
+      // Calculate dimensions for 2 photos per row
+      const photoMargin = 5; // Space between photos
+      const availableWidth = contentWidth - photoMargin;
+      const photoWidth = availableWidth / 2;
+      const photoHeight = 45; // Fixed height for consistency
+      const descriptionHeight = 10; // Reduced from 15 to 10
+      const rowSpacing = 3; // Reduced spacing between rows
+
+      for (let i = 0; i < formData.photos.length; i += 2) {
+        const photo1 = formData.photos[i];
+        const photo2 = formData.photos[i + 1]; // Might be undefined for odd number of photos
+        
+        // Nueva página si no hay espacio (considera footer de 15mm)
+        if (yPosition + photoHeight + descriptionHeight > pageHeight - margin - 15) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+
+        try {
+          // First photo (left)
+          if (typeof photo1.url === 'string') {
+            const photo1X = margin;
+            
+            // Add photo
+            pdf.addImage(photo1.url, 'JPEG', photo1X, yPosition, photoWidth, photoHeight);
+            
+            // Add photo description below the image
+            if (photo1.description) {
+              pdf.setFontSize(8);
+              pdf.setFont('helvetica', 'bold');
+              const descriptionLines = pdf.splitTextToSize(photo1.description, photoWidth);
+              let descY = yPosition + photoHeight + 8;
+              descriptionLines.forEach((line: string, lineIndex: number) => {
+                if (lineIndex < 1) {
+                  pdf.text(line, photo1X + (photoWidth / 2), descY, { align: 'center' });
+                  descY += 3;
+                }
+              });
+            }
+          }
+
+          // Second photo (right) - only if it exists
+          if (photo2 && typeof photo2.url === 'string') {
+            const photo2X = margin + photoWidth + photoMargin;
+            
+            // Add photo
+            pdf.addImage(photo2.url, 'JPEG', photo2X, yPosition, photoWidth, photoHeight);
+            
+            // Add photo description below the image
+            if (photo2.description) {
+              pdf.setFontSize(8);
+              pdf.setFont('helvetica', 'bold');
+              const descriptionLines = pdf.splitTextToSize(photo2.description, photoWidth);
+              let descY = yPosition + photoHeight + 8;
+              descriptionLines.forEach((line: string, lineIndex: number) => {
+                if (lineIndex < 1) {
+                  pdf.text(line, photo2X + (photoWidth / 2), descY, { align: 'center' });
+                  descY += 3;
+                }
+              });
+            }
+          }
+        } catch (_e) {
+          console.warn(`Could not add photos ${i + 1}${photo2 ? ` and ${i + 2}` : ''} to PDF`);
+        }
+
+        // Move to next row position with reduced spacing
+        yPosition += photoHeight + descriptionHeight + rowSpacing;
+      }
+    }
+
+    // Signatures Section
+    // Add section divider
+    addSectionDivider();
+    
+    checkPageBreak(60); // Ensure space for signatures
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('FIRMAS', margin, yPosition);
+    yPosition += 15;
+
+    const signatureWidth = (contentWidth / 2) - 10;
+    const signatureHeight = 30;
+    
+    // Client signature
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Firma del Cliente', margin, yPosition);
+    
+    if (formData.clientSignature) {
+      try {
+        pdf.addImage(formData.clientSignature, 'PNG', margin, yPosition + 5, signatureWidth, signatureHeight);
+      } catch (_e) {
+        console.warn('Could not add client signature to PDF');
+        // Draw empty signature box if signature fails to load
+        pdf.setLineWidth(0.5);
+        pdf.setDrawColor(150, 150, 150);
+        pdf.rect(margin, yPosition + 5, signatureWidth, signatureHeight);
+      }
+    } else {
+      // Draw empty signature box when no signature
+      pdf.setLineWidth(0.5);
+      pdf.setDrawColor(150, 150, 150); // Gray border
+      pdf.rect(margin, yPosition + 5, signatureWidth, signatureHeight);
+    }
+    
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(0, 0, 0); // Ensure black text
+    pdf.text(`Nombre: ${formData.clientSignatureName || ''}`, margin, yPosition + 40);
+    pdf.text(`ID: ${formData.clientSignatureId || ''}`, margin, yPosition + 45);
+
+    // Technician signature
+    const techSignatureX = margin + signatureWidth + 20;
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Firma del Técnico', techSignatureX, yPosition);
+    
+    if (formData.technicianSignature) {
+      try {
+        pdf.addImage(formData.technicianSignature, 'PNG', techSignatureX, yPosition + 5, signatureWidth, signatureHeight);
+      } catch (_e) {
+        console.warn('Could not add technician signature to PDF');
+        // Draw empty signature box if signature fails to load
+        pdf.setLineWidth(0.5);
+        pdf.setDrawColor(150, 150, 150);
+        pdf.rect(techSignatureX, yPosition + 5, signatureWidth, signatureHeight);
+      }
+    } else {
+      // Draw empty signature box when no signature
+      pdf.setLineWidth(0.5);
+      pdf.setDrawColor(150, 150, 150); // Gray border
+      pdf.rect(techSignatureX, yPosition + 5, signatureWidth, signatureHeight);
+    }
+    
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(0, 0, 0); // Ensure black text
+    pdf.text(`Nombre: ${formData.technicianName || ''}`, techSignatureX, yPosition + 40);
+    pdf.text(`ID: ${formData.technicianId || ''}`, techSignatureX, yPosition + 45);
+
+    // Generate filename and save
+    const filename = `RT_${String(reportNumber).padStart(4, '0')}_${new Date().toISOString().split('T')[0]}.pdf`;
+    
+    // Add footer to all pages
+    const totalPages = (pdf.internal as any).getNumberOfPages ? (pdf.internal as any).getNumberOfPages() : pdf.internal.pages.length - 1;
+    for (let i = 1; i <= totalPages; i++) {
+      pdf.setPage(i);
+      addFooter(i, totalPages);
+    }
+    
+    pdf.save(filename);
+  }, [formData, reportNumber, logo, currentDate, currentTime, companyInfo, technician]);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
+    try {
+      await generatePDF();
+      const nextReport = reportNumber + 1;
+      setReportNumber(nextReport);
+      localStorage.setItem('ionenergy_report_number', String(nextReport));
+
+      // Conservar datos del cliente y técnico, limpiar solo datos del equipo
+      setFormData((prev: FormData) => ({
+        clientCompany:     prev.clientCompany,
+        clientContact:     prev.clientContact,
+        clientAddress:     prev.clientAddress,
+        clientEmail:       prev.clientEmail,
+        clientCity:        prev.clientCity,
+        clientPhone:       prev.clientPhone,
+        technicianSelect:  prev.technicianSelect,
+        technicianName:    prev.technicianName,
+        technicianId:      prev.technicianId,
+      }));
+
+      alert('Reporte generado. Datos del cliente conservados para el siguiente equipo.');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error al generar el reporte');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [formData, reportNumber, logo, currentDate, companyInfo]);
+
+  
   return (
     <div className="container max-w-4xl mx-auto p-4">
       <Card className="w-full" ref={formRef}>
-        <CardHeader className="space-y-2 header">
-          <div className="grid grid-cols-3 items-start gap-4">
+        <CardHeader className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 items-start gap-4">
             {/* Logo section */}
-            <div className="relative col-span-3 sm:col-span-1">
+            <div className="relative order-2 sm:order-1">
               {logo ? (
                 <div className="w-32 h-20 sm:w-40 sm:h-24 relative group mx-auto sm:mx-0">
-                  <Image
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                     src={logo}
                     alt="Company Logo"
-                    fill
-                    className="object-contain"
-                    sizes="(max-width: 768px) 100vw, 300px"
+                    className="w-full h-full object-contain"
                   />
                   <div className="absolute inset-0 bg-black bg-opacity-50 hidden group-hover:flex items-center justify-center">
                     <Button
@@ -1912,8 +1879,10 @@ const generatePDF = async () => {
                   </div>
                 </div>
               ) : (
-                <div className="w-32 h-24 bg-gray-200 flex flex-col items-center justify-center rounded cursor-pointer hover:bg-gray-300 mx-auto sm:mx-0"
-                     onClick={() => fileInputRef.current?.click()}>
+                <div 
+                  className="w-32 h-24 bg-gray-200 flex flex-col items-center justify-center rounded cursor-pointer hover:bg-gray-300 mx-auto sm:mx-0 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <span className="text-gray-500 font-bold text-sm">LOGO</span>
                   <span className="text-gray-500 text-xs">Click para cambiar</span>
                 </div>
@@ -1927,42 +1896,57 @@ const generatePDF = async () => {
               />
             </div>
             
-            <div className="text-center col-span-3 sm:col-span-1">
-              <h1 className="text-3xl font-bold mb-2">Reporte Técnico</h1>
+            {/* Title section */}
+            <div className="text-center order-1 sm:order-2">
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2">Reporte Técnico</h1>
               <div className="space-y-1">
                 <div className="flex items-center justify-center">
                   <span className="text-lg font-medium mr-2">N° Reporte:</span>
                   {isEditingReportNumber ? (
-                    <div className="flex items-center">
-                      <input
-                        type="number"
-                        min="1"
-                        value={reportNumber}
-                        onChange={handleReportNumberChange}
-                        onBlur={() => setIsEditingReportNumber(false)}
-                        autoFocus
-                        className="w-20 text-center border rounded p-1"
-                      />
-                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      value={reportNumber}
+                      onChange={handleReportNumberChange}
+                      onBlur={() => setIsEditingReportNumber(false)}
+                      autoFocus
+                      className="w-20 text-center border rounded p-1"
+                    />
                   ) : (
                     <div 
                       onClick={() => setIsEditingReportNumber(true)}
-                      className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded flex items-center"
+                      className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded flex items-center transition-colors"
                     >
                       <span className="font-medium text-red-500">{String(reportNumber).padStart(4, '0')}</span>
                       <Pen className="w-3 h-3 ml-1 text-gray-500" />
                     </div>
                   )}
                 </div>
-                <div className="text-sm text-gray-600">Fecha: {currentDate}</div>
+                <div className="text-sm text-gray-600">Fecha: {currentDate} — {currentTime}</div>
+                <div className="text-xs h-4" style={{ color: saveStatus === 'saved' ? '#16a34a' : '#9ca3af' }}>
+                  {saveStatus === 'saving' ? 'Guardando...' : saveStatus === 'saved' ? '✓ Guardado' : ''}
+                </div>
               </div>
             </div>  
 
-            <div className="text-center sm:text-right col-span-3 sm:col-span-1">
-              <h2 className="font-bold text-2xl">{companyInfo.name}</h2>
+            {/* Company info */}
+            <div className="text-center sm:text-right order-3">
+              <h2 className="font-bold text-xl sm:text-2xl">{companyInfo.name}</h2>
               <p className="text-sm text-gray-600">{companyInfo.address}</p>
               <p className="text-sm text-gray-600">{companyInfo.phone}</p>
               <p className="text-sm text-gray-600">{companyInfo.email}</p>
+              <div className="flex items-center justify-center sm:justify-end gap-2 mt-2">
+                <span className="text-sm font-medium text-green-700">👤 {technician}</span>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1 transition-colors"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="w-3 h-3" />
+                  Salir
+                </button>
+              </div>
             </div>
           </div>
           
@@ -1971,39 +1955,151 @@ const generatePDF = async () => {
 
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <ClientSection values={formData} onChange={handleFieldChange} isMobile={isMobile} />
+            {/* Client Information */}
+            <CollapsibleSection title="Información del Cliente" icon={User} initiallyOpen={true}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="clientCompany">Empresa</Label>
+                    <Input
+                      id="clientCompany"
+                      value={String(formData.clientCompany ?? '')}
+                      onChange={(e) => handleFieldChange('clientCompany', e.target.value)}
+                      placeholder="Nombre de la empresa"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientAddress">Dirección</Label>
+                    <Input
+                      id="clientAddress"
+                      value={String(formData.clientAddress ?? '')}
+                      onChange={(e) => handleFieldChange('clientAddress', e.target.value)}
+                      placeholder="Dirección de la empresa"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientCity">Ciudad</Label>
+                    <Input
+                      id="clientCity"
+                      value={String(formData.clientCity ?? '')}
+                      onChange={(e) => handleFieldChange('clientCity', e.target.value)}
+                      placeholder="Ciudad"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="clientContact">Contacto</Label>
+                    <Input
+                      id="clientContact"
+                      value={String(formData.clientContact ?? '')}
+                      onChange={(e) => handleFieldChange('clientContact', e.target.value)}
+                      placeholder="Nombre del contacto"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientEmail">Correo Electrónico</Label>
+                    <Input
+                      id="clientEmail"
+                      type="email"
+                      value={String(formData.clientEmail ?? '')}
+                      onChange={(e) => handleFieldChange('clientEmail', e.target.value)}
+                      placeholder="correo@empresa.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientPhone">Teléfono</Label>
+                    <Input
+                      id="clientPhone"
+                      value={String(formData.clientPhone ?? '')}
+                      onChange={(e) => handleFieldChange('clientPhone', e.target.value)}
+                      placeholder="Número de contacto"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CollapsibleSection>
             
-            <ServiceTypeSection 
-              value={formData.serviceType || ''} 
-              onChange={(value) => handleFieldChange('serviceType', value)} 
-              isMobile={isMobile} 
+            {/* Información del Servicio */}
+            <ServiceInfoSection
+              formData={formData}
+              onChange={handleFieldChange}
+              technician={technician}
             />
 
-            <ServiceSection values={formData} onChange={handleFieldChange} isMobile={isMobile} />
-            
-            {/* Contenido técnico */}
-            {isMobile ? (
-              <>
-                <ElectricalSection 
-                  electricalParameters={electricalParameters} 
-                  formData={formData} 
-                  handleFieldChange={handleFieldChange} 
-                  isMobile={isMobile} 
-                />
-                <BatterySection 
-                  formData={formData} 
-                  handleFieldChange={handleFieldChange} 
-                  isMobile={isMobile} 
-                />
-              </>
-            ) : (
-              <div className="space-y-4">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Parámetros Eléctricos
-                </h3>
+            {/* Service Type - Multi-select */}
+            <ServiceTypeSection 
+              selectedServices={formData.selectedServices || []}
+              onServiceChange={handleServiceChange}
+            />
 
-                {/* Parámetros Eléctricos */}
+            {/* Materiales y Repuestos */}
+            <MaterialsSection
+              formData={formData}
+              setFormData={setFormData}
+            />
+
+            {/* Checklist de Actividades */}
+            <ChecklistSection
+              checkedItems={formData.checkedItems || []}
+              onCheckChange={(items) => handleFieldChange('checkedItems', items)}
+            />
+
+            {/* Service Details */}
+            <CollapsibleSection title="Detalles del Equipo" icon={Wrench}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+                <div className="space-y-2">
+                  <Label htmlFor="equipmentBrand">Marca</Label>
+                  <Input
+                    id="equipmentBrand"
+                    value={String(formData.equipmentBrand ?? '')}
+                    onChange={(e) => handleFieldChange('equipmentBrand', e.target.value)}
+                    placeholder="Marca del equipo"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="equipmentModel">Modelo</Label>
+                  <Input
+                    id="equipmentModel"
+                    value={String(formData.equipmentModel ?? '')}
+                    onChange={(e) => handleFieldChange('equipmentModel', e.target.value)}
+                    placeholder="Modelo del equipo"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capacity">Capacidad (Kva)</Label>
+                  <Input
+                    id="capaciy"
+                    value={String(formData.capacity ?? '')}
+                    onChange={(e) => handleFieldChange('capacity', e.target.value)}
+                    placeholder="Potencia del equipo"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="equipmentSerial">Serial </Label>
+                  <Input
+                    id="equipmentSerial"
+                    value={String(formData.equipmentSerial ?? '')}
+                    onChange={(e) => handleFieldChange('equipmentSerial', e.target.value)}
+                    placeholder="Número de serie"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="equipmentUbicacion">Ubicacion</Label>
+                  <Input
+                    id="equipmentUbicacion"
+                    value={String(formData.equipmentUbicacion ?? '')}
+                    onChange={(e) => handleFieldChange('equipmentUbicacion', e.target.value)}
+                    placeholder="Ubicacion Equipo"
+                  />
+                </div>
+              </div>
+            </CollapsibleSection>
+            
+            {/* Electrical Parameters */}
+            <CollapsibleSection title="Parámetros Eléctricos" icon={FileText}>
+              <div className="space-y-6">
                 <ElectricalInputGroup
                   title="Voltaje de Entrada"
                   fields={electricalParameters.inputVoltage}
@@ -2028,75 +2124,324 @@ const generatePDF = async () => {
                   values={formData}
                   onChange={handleFieldChange}
                 />
-
-                {/* Parámetros de Baterías */}
-                <BatterySection 
-                  formData={formData} 
-                  handleFieldChange={handleFieldChange} 
-                  isMobile={isMobile} 
-                />
-
-                {/* Estados del equipo */}
-                <EquipmentStatusSection 
-                  formData={formData} 
-                  handleFieldChange={handleFieldChange} 
-                  isMobile={isMobile}
-                />
-                
               </div>
-            )}
-            
-            <DescriptionSection 
-              formData={formData} 
-              handleFieldChange={handleFieldChange} 
-              isMobile={isMobile} 
-            />
-            
+            </CollapsibleSection>
+
+            {/* Battery Parameters */}
+            <CollapsibleSection title="Parámetros de Baterías" icon={FileText}>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {[
+                    { id: 'batteryVoltageTotal', label: 'Voltaje Total', unit: 'V' },
+                    { id: 'batteryVoltageTest', label: 'Voltaje Descarga', unit: 'V' },
+                    { id: 'batteryCurrentDischarge', label: 'Corriente Descarga', unit: 'A' },
+                    { id: 'batteryCurrentTest', label: 'Corriente Carga', unit: 'A' }
+                  ].map(({ id, label, unit }) => (
+                    <div key={id} className="space-y-2">
+                      <Label htmlFor={id} className="text-sm">{label} ({unit})</Label>
+                      <Input
+                        id={id}
+                        type="number"
+                        value={String(formData[id] ?? '')}
+                        onChange={(e) => handleFieldChange(id, e.target.value)}
+                        className="text-right text-sm"
+                        placeholder="0.0"
+                        inputMode="decimal"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="batteryString" className="text-sm">Baterías por Bancos</Label>
+                    <Input
+                      id="batteryString"
+                      type="number"
+                      value={String(formData.batteryString ?? '')}
+                      onChange={(e) => handleFieldChange('batteryString', e.target.value)}
+                      className="text-right text-sm"
+                      placeholder="0"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="batteryBank" className="text-sm">Numeros de Bancos</Label>
+                    <Input
+                      id="batteryBank"
+                      type="number"
+                      value={String(formData.batteryBank ?? '')}
+                      onChange={(e) => handleFieldChange('batteryBank', e.target.value)}
+                      className="text-right text-sm"
+                      placeholder="0"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="batteryQuantity" className="text-sm">Total de Baterias</Label>
+                    <Input
+                      id="batteryQuantity"
+                      type="number"
+                      value={String(formData.batteryQuantity ?? '')}
+                      onChange={(e) => handleFieldChange('batteryQuantity', e.target.value)}
+                      className="text-right text-sm"
+                      placeholder="0"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="batteryReference" className="text-sm">Referencia (Ah)</Label>
+                    <Input
+                      id="batteryReference"
+                      value={String(formData.batteryReference ?? '')}
+                      onChange={(e) => handleFieldChange('batteryReference', e.target.value)}
+                      className="text-right text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="batteryBrand" className="text-sm">Marca Baterias </Label>
+                    <Input
+                      id="batteryBrand"
+                      value={String(formData.batteryBrand ?? '')}
+                      onChange={(e) => handleFieldChange('batteryBrand', e.target.value)}
+                      className="text-right text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="batteryFecha" className="text-sm">Fecha Fabricacion (FI)</Label>
+                    <Input
+                      id="batteryFecha"
+                      value={String(formData.batteryFecha ?? '')}
+                      onChange={(e) => handleFieldChange('batteryFecha', e.target.value)}
+                      className="text-right text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="batteryAutonomy" className="text-sm">Autonomía (min)</Label>
+                    <Input
+                      id="batteryAutonomy"
+                      type="number"
+                      value={String(formData.batteryAutonomy ?? '')}
+                      onChange={(e) => handleFieldChange('batteryAutonomy', e.target.value)}
+                      className="text-right text-sm"
+                      placeholder="0"
+                      inputMode="numeric"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {/* Equipment Status */}
+            <CollapsibleSection title="Estado del Equipo" icon={Wrench}>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rectifierStatus" className="text-sm">Estado Rectificador</Label>
+                  <select
+                    id="rectifierStatus"
+                    value={String(formData.rectifierStatus ?? '')}
+                    onChange={(e) => handleFieldChange('rectifierStatus', e.target.value)}
+                    className="w-full p-2 border rounded-md bg-white text-sm"
+                  >
+                    <option value="">Seleccionar estado</option>
+                    <option value="bueno">Bueno</option>
+                    <option value="falla">Falla</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="chargerStatus" className="text-sm">Estado Cargador</Label>
+                  <select
+                    id="chargerStatus"
+                    value={String(formData.chargerStatus ?? '')}
+                    onChange={(e) => handleFieldChange('chargerStatus', e.target.value)}
+                    className="w-full p-2 border rounded-md bg-white text-sm"
+                  >
+                    <option value="">Seleccionar estado</option>
+                    <option value="bueno">Bueno</option>
+                    <option value="falla">Falla</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="inverterStatus" className="text-sm">Estado Inversor</Label>
+                  <select
+                    id="inverterStatus"
+                    value={String(formData.inverterStatus ?? '')}
+                    onChange={(e) => handleFieldChange('inverterStatus', e.target.value)}
+                    className="w-full p-2 border rounded-md bg-white text-sm"
+                  >
+                    <option value="">Seleccionar estado</option>
+                    <option value="bueno">Bueno</option>
+                    <option value="falla">Falla</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="batteryStatus" className="text-sm">Estado Batería</Label>
+                  <select
+                    id="batteryStatus"
+                    value={String(formData.batteryStatus ?? '')}
+                    onChange={(e) => handleFieldChange('batteryStatus', e.target.value)}
+                    className="w-full p-2 border rounded-md bg-white text-sm"
+                  >
+                    <option value="">Seleccionar estado</option>
+                    <option value="bueno">Bueno</option>
+                    <option value="remplazar">Remplazar</option>
+                  </select>
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {/* Description and Recommendations */}
+            <CollapsibleSection title="Descripción y Recomendaciones" icon={FileText}>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="description">Descripción del trabajo realizado</Label>
+                  <textarea
+                    id="description"
+                    value={String(formData.description ?? '')}
+                    onChange={(e) => handleFieldChange('description', e.target.value)}
+                    className="w-full min-h-[100px] p-2 border rounded-md text-justify resize-none"
+                    placeholder="Detalle el trabajo realizado..."
+                    rows={4}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="recommendations">Recomendaciones</Label>
+                  <textarea
+                    id="recommendations"
+                    value={String(formData.recommendations ?? '')}
+                    onChange={(e) => handleFieldChange('recommendations', e.target.value)}
+                    className="w-full min-h-[100px] p-2 border rounded-md text-justify resize-none"
+                    placeholder="Ingrese las recomendaciones..."
+                    rows={4}
+                  />
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {/* Photos */}
             <PhotosSection 
               formData={formData} 
               setFormData={setFormData}
               isMobile={isMobile} 
             />
             
-            <SignaturesSection 
-              formData={{
-                clientSignature: formData.clientSignature || null,
-                clientSignatureName: formData.clientSignatureName || '',
-                clientSignatureId: formData.clientSignatureId || '',
-                technicianSignature: formData.technicianSignature || null,
-                technicianName: formData.technicianName || '',
-                technicianId: formData.technicianId || ''
-              }}
-              handleFieldChange={handleFieldChange}
-              isMobile={isMobile}  
-            />
+            {/* Signatures */}
+            <CollapsibleSection title="Firmas" icon={Pen}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Client Signature */}
+                <div className="space-y-4">
+                  <h4 className="font-medium text-center">Firma del Cliente</h4>
+                  <SignaturePad
+                    id="client-signature"
+                    onSave={(dataUrl) => handleFieldChange('clientSignature', dataUrl)}
+                    onClear={() => handleFieldChange('clientSignature', null)}
+                    isSaved={!!formData.clientSignature}
+                  />
+                  <div className="space-y-2">
+                    <Input
+                      id="clientSignatureName"
+                      value={String(formData.clientSignatureName ?? '')}
+                      onChange={(e) => handleFieldChange('clientSignatureName', e.target.value)}
+                      placeholder="Nombre del Cliente"
+                      className="text-center text-sm"
+                    />
+                    <Input
+                      id="clientSignatureId"
+                      value={String(formData.clientSignatureId ?? '')}
+                      onChange={(e) => handleFieldChange('clientSignatureId', e.target.value)}
+                      placeholder="Número de Identificación"
+                      className="text-center text-sm"
+                    />
+                  </div>
+                </div>
 
-            <div className="flex justify-end mt-6">
+                {/* Technician Signature */}
+                <div className="space-y-4">
+                  <h4 className="font-medium text-center">Firma del Técnico</h4>
+                  <SignaturePad
+                    id="technician-signature"
+                    onSave={(dataUrl) => handleFieldChange('technicianSignature', dataUrl)}
+                    onClear={() => handleFieldChange('technicianSignature', null)}
+                    isSaved={!!formData.technicianSignature}
+                  />
+                  <div className="space-y-2">
+                    <Input
+                      id="technicianName"
+                      value={String(formData.technicianName ?? technician ?? '')}
+                      onChange={(e) => handleFieldChange('technicianName', e.target.value)}
+                      placeholder="Nombre del Técnico"
+                      className="text-center text-sm"
+                    />
+                    <Input
+                      id="technicianId"
+                      value={String(formData.technicianId ?? '')}
+                      onChange={(e) => handleFieldChange('technicianId', e.target.value)}
+                      placeholder="Número de Identificación"
+                      className="text-center text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {/* Submit Buttons */}
+            <div className="flex justify-center sm:justify-end mt-6">
               <Button 
                 type="submit" 
-                className="bg-green-600 hover:bg-blue-700 text-white"
+                disabled={isLoading}
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white min-w-[200px]"
               >
-                Generar Reporte
+                {isLoading ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Generando...
+                  </div>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Generar Reporte
+                  </>
+                )}
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
       
-      {/* Botón flotante para dispositivos móviles */}
+      {/* Floating Action Button for Mobile */}
       {isMobile && (
-        <div className="fixed bottom-4 right-4">
+        <div className="fixed bottom-6 right-6 z-50">
           <Button 
             type="button" 
-            onClick={() => handleSubmit(new Event('submit'))}
-            className="rounded-full w-14 h-14 bg-green-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg"
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="rounded-full w-14 h-14 bg-green-600 hover:bg-green-700 text-white flex items-center justify-center shadow-lg transition-all duration-200 active:scale-95"
           >
-            <Download className="w-6 h-6" />
+            {isLoading ? (
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+            ) : (
+              <Download className="w-6 h-6" />
+            )}
           </Button>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 flex flex-col items-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-4"></div>
+            <p className="text-gray-700">Generando reporte...</p>
+          </div>
         </div>
       )}
     </div>
   );
 };
+
 
 export default TechnicalForm;

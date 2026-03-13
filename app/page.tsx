@@ -1,11 +1,11 @@
 "use client"
-import React, { useState, } from 'react';
+import React, { useState } from 'react';
 import Login from '@/components/ui/login';
 import TechnicalForm from '@/components/ui/TechnicalForm';
 import { Button } from '@/components/ui/button';
 import { LogOut, User } from 'lucide-react';
 
-interface User {
+interface UserData {
   email: string;
   name: string;
   role: string;
@@ -13,13 +13,12 @@ interface User {
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  
+  const [currentUser, setCurrentUser] = useState<UserData | null>(null);
+
   const handleLogin = ({ email, role }: { email: string; password: string; role?: string }) => {
-    // Las credenciales ya fueron validadas en el componente Login
     setCurrentUser({
       email,
-      name: email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1), // Capitalize first letter
+      name: role || email.split('@')[0],
       role: role || 'Usuario'
     });
     setIsAuthenticated(true);
@@ -31,17 +30,15 @@ const App: React.FC = () => {
   };
 
   const handleForgotPassword = () => {
-    // In a real app, you would implement password recovery
     alert('Función de recuperación de contraseña en desarrollo');
   };
-  
+
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} onForgotPassword={handleForgotPassword} />;
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header with user info */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-2 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
@@ -54,7 +51,7 @@ const App: React.FC = () => {
                 <p className="text-xs text-gray-500">{currentUser?.role}</p>
               </div>
             </div>
-            <Button 
+            <Button
               onClick={handleLogout}
               className="flex items-center gap-2 bg-green-600 hover:bg-red-600 text-white"
             >
@@ -65,9 +62,11 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main content */}
       <main className="py-6">
-        <TechnicalForm />
+        <TechnicalForm
+          technician={currentUser?.name ?? ''}
+          onLogout={handleLogout}
+        />
       </main>
     </div>
   );

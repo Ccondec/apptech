@@ -61,7 +61,8 @@ const Login: React.FC<LoginFormProps> = ({ onLogin, onForgotPassword }) => {
 
   // Credenciales predefinidas para pruebas
   const predefinedCredentials = [
-    { email: 'admin@ionenergy.com.co', password: 'admin123', role: 'Administrador' },
+    { email: 'admin@ionenergy.com.co', password: 'admin123', role: 'Carlos Andres Conde' },
+    { email: 'carlos.conde@ionenergy.com.co', password: 'admin123', role: 'Carlos Andres Conde' },
     { email: 'tecnico@ionenergy.com.co', password: 'tecnico123', role: 'Técnico' },
     { email: 'supervisor@ionenergy.com.co', password: 'super123', role: 'Supervisor' }
   ];
