@@ -1123,8 +1123,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
         }).catch(() => {})
       }
       // Guardar informe
-      console.log('📋 Guardando informe, empresaId:', empresaId)
-      const resInforme = await guardarInforme({
+      await guardarInforme({
         qr_code: qrCodeId || undefined,
         numero_informe: repNum,
         fecha, cliente: client, serial, marca: brand,
@@ -1132,8 +1131,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
         equipo_id: selectedEquipoId ?? undefined,
         tipo_reporte: formData.reportType ?? 'ups',
         empresa_id: empresaId,
-      })
-      console.log('📋 Resultado informe:', resInforme)
+      }).catch(() => {})
     } catch (_e) { /* QR opcional */ }
 
     // Create a new jsPDF instance
