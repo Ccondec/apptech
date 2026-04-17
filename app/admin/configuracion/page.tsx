@@ -1,12 +1,32 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { getEmpresaConfig, updateEmpresaConfig } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import DraggableLogo from '@/components/ui/DraggableLogo'
 import { ArrowLeft, Building2, Save, Upload, X } from 'lucide-react'
+
+function compressImage(dataUrl: string, maxW: number, maxH: number, quality: number): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => {
+      const ratio = Math.min(maxW / img.width, maxH / img.height, 1)
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.round(img.width  * ratio)
+      canvas.height = Math.round(img.height * ratio)
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => resolve(dataUrl)
+    img.src = dataUrl
+  })
+}
 
 export default function ConfiguracionPage() {
   const { user, loading } = useAuth()
@@ -18,9 +38,24 @@ export default function ConfiguracionPage() {
   const [direccion, setDireccion] = useState('')
   const [emailContacto, setEmailContacto] = useState('')
   const [logo, setLogo] = useState('')
+  const [logoPosX, setLogoPosX] = useState(50)
+  const [logoPosY, setLogoPosY] = useState(50)
+  const [logoZoom, setLogoZoom] = useState(1)
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
+
+  // Cargar pos/zoom guardados en localStorage
+  useEffect(() => {
+    try {
+      const px = localStorage.getItem('apptech_logo_posX')
+      const py = localStorage.getItem('apptech_logo_posY')
+      const pz = localStorage.getItem('apptech_logo_zoom')
+      if (px) setLogoPosX(parseFloat(px))
+      if (py) setLogoPosY(parseFloat(py))
+      if (pz) setLogoZoom(parseFloat(pz))
+    } catch (_e) {}
+  }, [])
 
   useEffect(() => {
     if (!loading && !user) { router.push('/login'); return }
@@ -39,18 +74,34 @@ export default function ConfiguracionPage() {
     })
   }, [user])
 
-  const handleLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogo = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = ev => setLogo(ev.target?.result as string)
+    reader.onload = async ev => {
+      const result = ev.target?.result
+      if (typeof result === 'string') {
+        const compressed = await compressImage(result, 400, 200, 0.7)
+        setLogo(compressed)
+        // Resetear posición al cargar un nuevo logo
+        setLogoPosX(50); setLogoPosY(50); setLogoZoom(1)
+        localStorage.setItem('apptech_logo_posX', '50')
+        localStorage.setItem('apptech_logo_posY', '50')
+        localStorage.setItem('apptech_logo_zoom', '1')
+      }
+    }
     reader.readAsDataURL(file)
-  }
+  }, [])
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user?.empresa_id) return
     setSaving(true); setError(''); setSuccess(false)
+
+    // Guardar pos/zoom en localStorage
+    localStorage.setItem('apptech_logo_posX', String(logoPosX))
+    localStorage.setItem('apptech_logo_posY', String(logoPosY))
+    localStorage.setItem('apptech_logo_zoom', String(logoZoom))
 
     const result = await updateEmpresaConfig(user.empresa_id, {
       nombre_comercial: nombreComercial.trim(),
@@ -86,29 +137,41 @@ export default function ConfiguracionPage() {
           {/* Logo */}
           <div className="space-y-3">
             <Label>Logo de la empresa</Label>
-            <div className="flex items-center gap-4">
+            <div className="flex items-start gap-4">
               {logo ? (
-                <div className="relative w-32 h-20 border border-gray-200 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={logo} alt="Logo" className="max-w-full max-h-full object-contain p-1" />
-                  <button
-                    type="button"
-                    onClick={() => { setLogo(''); if (fileRef.current) fileRef.current.value = '' }}
-                    className="absolute top-1 right-1 bg-white rounded-full p-0.5 shadow text-gray-500 hover:text-red-500"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
+                <DraggableLogo
+                  src={logo}
+                  posX={logoPosX}
+                  posY={logoPosY}
+                  zoom={logoZoom}
+                  onPositionChange={(x, y) => { setLogoPosX(x); setLogoPosY(y) }}
+                  onZoomChange={z => setLogoZoom(z)}
+                  onRemove={() => {
+                    setLogo('')
+                    setLogoPosX(50); setLogoPosY(50); setLogoZoom(1)
+                    if (fileRef.current) fileRef.current.value = ''
+                  }}
+                  className="w-40 h-24 border border-gray-200"
+                />
               ) : (
-                <div className="w-32 h-20 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-gray-300">
-                  <Building2 className="w-8 h-8" />
+                <div
+                  className="w-40 h-24 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-300 cursor-pointer hover:border-green-400 hover:text-green-400 transition-colors"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Building2 className="w-8 h-8 mb-1" />
+                  <span className="text-xs">Click para subir</span>
                 </div>
               )}
-              <div>
+              <div className="flex flex-col gap-2">
                 <Button type="button" onClick={() => fileRef.current?.click()} className="bg-gray-100 hover:bg-gray-200 text-gray-700">
-                  <Upload className="w-4 h-4 mr-2" /> Subir logo
+                  <Upload className="w-4 h-4 mr-2" /> {logo ? 'Cambiar logo' : 'Subir logo'}
                 </Button>
-                <p className="text-xs text-gray-400 mt-1">PNG, JPG — máx. 2MB</p>
+                <p className="text-xs text-gray-400">PNG, JPG — máx. 2MB</p>
+                {logo && (
+                  <p className="text-xs text-gray-400">
+                    Arrastra el logo para encuadrar.<br />Rueda del mouse o pellizco para zoom.
+                  </p>
+                )}
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleLogo} />
               </div>
             </div>
