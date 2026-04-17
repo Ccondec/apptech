@@ -1345,56 +1345,54 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       return yPosition;
     };
 
-    // Add company logo if available
+    // Logo (izquierda) — 40×20 mm
+    const logoW = 40, logoH = 20
     if (logo) {
       try {
-        pdf.addImage(logo, 'JPEG', margin, yPosition, 40, 20);
+        pdf.addImage(logo, 'JPEG', margin, yPosition, logoW, logoH);
       } catch (_e) {
         console.warn('Could not add logo to PDF');
       }
+    }
+
+    // QR code — al lado derecho del logo, mismo alto (20×20 mm)
+    const qrSize = 20
+    const qrX = margin + logoW + 4   // 4 mm de separación del logo
+    if (qrCanvas) {
+      try {
+        pdf.addImage(qrCanvas, 'PNG', qrX, yPosition, qrSize, qrSize)
+        pdf.setFontSize(5)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(120, 120, 120)
+        pdf.text('Historial', qrX + qrSize / 2, yPosition + qrSize + 2.5, { align: 'center' })
+        pdf.setTextColor(0, 0, 0)
+      } catch (e) { console.error('Error agregando QR al PDF:', e) }
     }
 
     // Title and report info (center)
     pdf.setFontSize(18);
     pdf.setFont('helvetica', 'bold');
     pdf.text('REPORTE TÉCNICO', pageWidth / 2, yPosition + 8, { align: 'center' });
-    
+
     pdf.setFontSize(12);
-    pdf.setTextColor(200, 0, 0); // Rojo
+    pdf.setTextColor(200, 0, 0);
     pdf.text(`N° Reporte: ${fmtReportNum(reportNumber)}`, pageWidth / 2, yPosition + 16, { align: 'center' });
-    pdf.setTextColor(0, 0, 0); // Restaurar negro
-    
+    pdf.setTextColor(0, 0, 0);
+
     pdf.setFontSize(10);
     pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 22, { align: 'center' });
 
-    // QR code — esquina superior derecha (22×22 mm)
-    const qrSize = 22
-    const qrX = pageWidth - margin - qrSize
-    if (qrCanvas) {
-      try {
-        pdf.addImage(qrCanvas, 'PNG', qrX, yPosition, qrSize, qrSize)
-        pdf.setFontSize(5.5)
-        pdf.setFont('helvetica', 'normal')
-        pdf.setTextColor(120, 120, 120)
-        pdf.text('Escanear historial', qrX + qrSize / 2, yPosition + qrSize + 3, { align: 'center' })
-        pdf.setTextColor(0, 0, 0)
-      } catch (e) { console.error('Error agregando QR al PDF:', e) }
-    } else {
-      console.warn('qrCanvas es null — QR no generado')
-    }
-
-    // Company info (top right, a la izquierda del QR)
-    const textRight = qrCanvas ? qrX - 3 : pageWidth - margin
+    // Company info (derecha)
     pdf.setFontSize(12);
     pdf.setFont('helvetica', 'bold');
-    pdf.text(companyInfo.name, textRight, yPosition + 5, { align: 'right' });
+    pdf.text(companyInfo.name, pageWidth - margin, yPosition + 5, { align: 'right' });
     pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
-    pdf.text(companyInfo.address, textRight, yPosition + 10, { align: 'right' });
-    pdf.text(companyInfo.phone,   textRight, yPosition + 14, { align: 'right' });
-    pdf.text(companyInfo.email,   textRight, yPosition + 18, { align: 'right' });
+    pdf.text(companyInfo.address, pageWidth - margin, yPosition + 10, { align: 'right' });
+    pdf.text(companyInfo.phone,   pageWidth - margin, yPosition + 14, { align: 'right' });
+    pdf.text(companyInfo.email,   pageWidth - margin, yPosition + 18, { align: 'right' });
 
-    yPosition += 38;
+    yPosition += 35;
 
     // Horizontal line
     pdf.setLineWidth(0.5);
