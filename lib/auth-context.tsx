@@ -38,19 +38,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // 1. Verificar sesión existente al montar
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      loadUser(session)
-    })
-
-    // 2. Escuchar cambios de auth (login / logout / refresh)
     const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        setSession(s)
+      setSession(s)
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         loadUser(s)
       } else if (event === 'SIGNED_OUT') {
-        setSession(null)
         setUser(null)
         setLoading(false)
       }
