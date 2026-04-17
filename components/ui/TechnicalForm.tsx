@@ -2205,6 +2205,12 @@ yPosition += 8;
         technicianId:      prev.technicianId,
       }));
 
+      // Cerrar y limpiar historial
+      setShowHistorial(false)
+      setHistorial([])
+      setHistorialTab(0)
+      setSelectedEquipoId(null)
+
       alert('Reporte generado. Datos del cliente conservados para el siguiente equipo.');
     } catch (error) {
       console.error('Error generating PDF:', error);
