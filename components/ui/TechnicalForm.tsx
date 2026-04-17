@@ -815,6 +815,11 @@ const ServiceTypeSection = ({ selectedServices, onServiceChange }: { selectedSer
 };
 
 // Main Component with optimizations
+const fmtReportNum = (n: number) => {
+  const yy = String(new Date().getFullYear()).slice(-2);
+  return `${yy}-${String(n).padStart(4, '0')}`;
+};
+
 const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string; empresaId?: string; onLogout?: () => void }) => {
   const [formData, setFormData] = useState<FormData>({});
   const [reportNumber, setReportNumber] = useState(1);
@@ -1070,7 +1075,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       const capacity = String(formData.capacity          ?? '').trim()
       const location = String(formData.equipmentUbicacion ?? formData.equipmentLocation ?? '').trim()
       const client   = String(formData.clientCompany     ?? '').trim()
-      const repNum   = String(reportNumber).padStart(4, '0')
+      const repNum   = fmtReportNum(reportNumber)
       const fecha    = new Date().toLocaleDateString('es-CO')
       const qrCodeId = String(formData.qrCode ?? '').trim()
       const tecnico  = String(formData.technicianName ?? technician).trim()
@@ -1140,7 +1145,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       pdf.setTextColor(100, 100, 100); // Gray color
       
       // Left: Report number and date
-      const reportInfo = `Reporte N° ${String(reportNumber).padStart(4, '0')} | ${currentDate}`;
+      const reportInfo = `Reporte N° ${fmtReportNum(reportNumber)} | ${currentDate}`;
       pdf.text(reportInfo, margin, footerY);
       
       // Center: Company name
@@ -1198,7 +1203,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     pdf.text('REPORTE TÉCNICO', pageWidth / 2, yPosition + 8, { align: 'center' });
     
     pdf.setFontSize(12);
-    pdf.text(`N° Reporte: ${String(reportNumber).padStart(4, '0')}`, pageWidth / 2, yPosition + 16, { align: 'center' });
+    pdf.text(`N° Reporte: ${fmtReportNum(reportNumber)}`, pageWidth / 2, yPosition + 16, { align: 'center' });
     
     pdf.setFontSize(10);
     pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 22, { align: 'center' });
@@ -1995,7 +2000,7 @@ yPosition += 8;
     pdf.text(`ID: ${formData.technicianId || ''}`, techSignatureX, yPosition + 45);
 
     // Generate filename and save
-    const filename = `RT_${String(reportNumber).padStart(4, '0')}_${new Date().toISOString().split('T')[0]}.pdf`;
+    const filename = `RT_${fmtReportNum(reportNumber)}_${new Date().toISOString().split('T')[0]}.pdf`;
     
     // Add footer to all pages
     const totalPages = (pdf.internal as any).getNumberOfPages ? (pdf.internal as any).getNumberOfPages() : pdf.internal.pages.length - 1;
@@ -2212,7 +2217,7 @@ yPosition += 8;
                       onClick={() => setIsEditingReportNumber(true)}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded flex items-center transition-colors"
                     >
-                      <span className="font-medium text-red-500">{String(reportNumber).padStart(4, '0')}</span>
+                      <span className="font-medium text-red-500">{fmtReportNum(reportNumber)}</span>
                       <Pen className="w-3 h-3 ml-1 text-gray-500" />
                     </div>
                   )}
