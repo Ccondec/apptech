@@ -7,7 +7,7 @@ import PlantaParams from './PlantaParams'
 import FotovoltaicoParams from './FotovoltaicoParams'
 import OtrosParams from './OtrosParams'
 
-type Photo = { id: number; url: string; description: string };
+type Photo = { id: number; url: string; description: string; posX?: number; posY?: number };
 type MaterialRow = { id: string; item: string; qty: string; ref: string };
 type ReportType = 'ups' | 'aire' | 'planta' | 'fotovoltaico' | 'otros';
 
@@ -44,6 +44,59 @@ async function loadPhotosIDB(): Promise<Photo[]> {
 async function clearPhotosIDB(): Promise<void> {
   const db = await openPhotoDB()
   db.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE).delete('current')
+}
+
+// Foto con arrastre para reposicionar dentro del recuadro
+const DraggablePhoto = ({ photo, onPositionChange }: {
+  photo: Photo
+  onPositionChange: (id: number, x: number, y: number) => void
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+  const lastPos  = useRef({ x: 0, y: 0 })
+  const posX = photo.posX ?? 50
+  const posY = photo.posY ?? 50
+
+  const startDrag = (clientX: number, clientY: number) => {
+    dragging.current = true
+    lastPos.current  = { x: clientX, y: clientY }
+  }
+  const moveDrag = (clientX: number, clientY: number) => {
+    if (!dragging.current || !containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const dx = ((lastPos.current.x - clientX) / rect.width)  * 100
+    const dy = ((lastPos.current.y - clientY) / rect.height) * 100
+    lastPos.current = { x: clientX, y: clientY }
+    const nx = Math.min(100, Math.max(0, posX + dx))
+    const ny = Math.min(100, Math.max(0, posY + dy))
+    onPositionChange(photo.id, nx, ny)
+  }
+  const endDrag = () => { dragging.current = false }
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-48 overflow-hidden rounded-lg cursor-grab active:cursor-grabbing select-none relative"
+      onMouseDown={e => startDrag(e.clientX, e.clientY)}
+      onMouseMove={e => moveDrag(e.clientX, e.clientY)}
+      onMouseUp={endDrag} onMouseLeave={endDrag}
+      onTouchStart={e => startDrag(e.touches[0].clientX, e.touches[0].clientY)}
+      onTouchMove={e => { e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY) }}
+      onTouchEnd={endDrag}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={photo.url}
+        alt="foto"
+        draggable={false}
+        className="w-full h-full object-cover pointer-events-none"
+        style={{ objectPosition: `${posX}% ${posY}%` }}
+      />
+      <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] bg-black/40 text-white px-2 py-0.5 rounded-full pointer-events-none">
+        ✋ Arrastra para encuadrar
+      </span>
+    </div>
+  )
 }
 
 // Descarga una foto al dispositivo
@@ -367,6 +420,14 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
     });
   }, [setFormData]);
 
+  const updatePhotoPosition = useCallback((photoId: number, posX: number, posY: number) => {
+    setFormData((prev: Record<string, any>) => {
+      const photos = prev.photos?.map((p: any) => p.id === photoId ? { ...p, posX, posY } : p) || [];
+      savePhotosIDB(photos).catch(() => {});
+      return { ...prev, photos };
+    });
+  }, [setFormData]);
+
   const content = (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
@@ -389,9 +450,7 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
           <div key={photo.id} className="space-y-2 border rounded-lg p-2">
             <div className="relative">
               {typeof photo.url === 'string' ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={photo.url} alt={`Foto ${index + 1}`}
-                  className="w-full h-48 object-cover rounded-lg" loading="lazy" />
+                <DraggablePhoto photo={photo} onPositionChange={updatePhotoPosition} />
               ) : (
                 <div className="w-full h-48 bg-gray-200 rounded-lg flex items-center justify-center">
                   <span>Imagen no disponible</span>
