@@ -28,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadUser(s: Session | null) {
     if (!s) { setUser(null); setLoading(false); return }
+    setLoading(true)
     const { data } = await supabase
       .from('usuarios')
       .select('*, empresa:empresas(*)')
