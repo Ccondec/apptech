@@ -1384,32 +1384,34 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     pdf.setFont('helvetica', 'normal');
     pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 20, { align: 'center' });
 
-    // QR code — centrado debajo del título (18×18 mm)
-    const qrSize = 18
-    const qrX = pageWidth / 2 - qrSize / 2
-    const qrY = yPosition + 29
+    // QR code — columna derecha, encima de los datos de empresa (16×16 mm)
+    const qrSize = 16
+    const qrX = pageWidth - margin - qrSize
+    const qrY = yPosition
     if (qrCanvas) {
       try {
         pdf.addImage(qrCanvas, 'PNG', qrX, qrY, qrSize, qrSize)
         pdf.setFontSize(5)
         pdf.setFont('helvetica', 'normal')
         pdf.setTextColor(120, 120, 120)
-        pdf.text('Escanear para historial', pageWidth / 2, qrY + qrSize + 2.5, { align: 'center' })
+        pdf.text('Historial', qrX + qrSize / 2, qrY + qrSize + 2, { align: 'center' })
         pdf.setTextColor(0, 0, 0)
       } catch (e) { console.error('Error agregando QR al PDF:', e) }
     }
 
-    // Company info (derecha)
+    // Company info (derecha, debajo del QR)
+    const companyX = pageWidth - margin
+    const companyY = qrY + qrSize + 4
     pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
-    pdf.text(companyInfo.name, pageWidth - margin, yPosition + 5, { align: 'right' });
+    pdf.text(companyInfo.name, companyX, companyY, { align: 'right' });
     pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
-    pdf.text(companyInfo.address, pageWidth - margin, yPosition + 10, { align: 'right' });
-    pdf.text(companyInfo.phone,   pageWidth - margin, yPosition + 14, { align: 'right' });
-    pdf.text(companyInfo.email,   pageWidth - margin, yPosition + 18, { align: 'right' });
+    pdf.text(companyInfo.address, companyX, companyY + 5, { align: 'right' });
+    pdf.text(companyInfo.phone,   companyX, companyY + 9, { align: 'right' });
+    pdf.text(companyInfo.email,   companyX, companyY + 13, { align: 'right' });
 
-    yPosition += 52;  // logo(20) + título+número+fecha(9) + QR(18) + label(3) + gap
+    yPosition += 28;  // logo/QR(20) + gap(8)
 
     // Horizontal line
     pdf.setLineWidth(0.5);
