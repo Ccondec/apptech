@@ -1212,31 +1212,32 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
 
   // PDF Generation Function — returns jsPDF instance
   const buildPDF = useCallback(async () => {
-    // Generar QR y sincronizar con Supabase
+    const serial   = String(formData.equipmentSerial   ?? '').trim()
+    const brand    = String(formData.equipmentBrand    ?? '').trim()
+    const model    = String(formData.equipmentModel    ?? '').trim()
+    const capacity = String(formData.capacity          ?? '').trim()
+    const location = String(formData.equipmentUbicacion ?? formData.equipmentLocation ?? '').trim()
+    const client   = String(formData.clientCompany     ?? '').trim()
+    const repNum   = fmtReportNum(reportNumber)
+    const fecha    = new Date().toLocaleDateString('es-CO')
+    const qrCodeId = String(formData.qrCode ?? '').trim()
+    const tecnico  = String(formData.technicianName ?? technician).trim()
+
+    // Generar QR primero (independiente de Supabase)
     let qrDataUrl: string | null = null
     try {
       const QRCode = (await import('qrcode')).default
-      const serial   = String(formData.equipmentSerial   ?? '').trim()
-      const brand    = String(formData.equipmentBrand    ?? '').trim()
-      const model    = String(formData.equipmentModel    ?? '').trim()
-      const capacity = String(formData.capacity          ?? '').trim()
-      const location = String(formData.equipmentUbicacion ?? formData.equipmentLocation ?? '').trim()
-      const client   = String(formData.clientCompany     ?? '').trim()
-      const repNum   = fmtReportNum(reportNumber)
-      const fecha    = new Date().toLocaleDateString('es-CO')
-      const qrCodeId = String(formData.qrCode ?? '').trim()
-      const tecnico  = String(formData.technicianName ?? technician).trim()
-
       const qrText = qrCodeId
         ? `https://apptech-one.vercel.app/equipo/${encodeURIComponent(qrCodeId)}`
-        : `https://apptech-one.vercel.app/informe?n=${repNum}&fecha=${fecha}&cliente=${encodeURIComponent(client)}`
-
+        : `https://apptech-one.vercel.app/informe?n=${repNum}&fecha=${encodeURIComponent(fecha)}&cliente=${encodeURIComponent(client)}`
       qrDataUrl = await QRCode.toDataURL(qrText, {
         width: 300, margin: 2, errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#ffffff' },
       })
+    } catch (e) { console.error('Error generando QR:', e) }
 
-      // Guardar cliente y equipo en Supabase
+    // Sincronizar con Supabase (no bloquea el PDF)
+    try {
       let savedClientId: string | undefined
       if (client) {
         const savedClient = await guardarCliente({
@@ -1258,7 +1259,6 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
           client_id: savedClientId,
         }).catch(() => {})
       }
-      // Guardar informe
       await guardarInforme({
         qr_code: qrCodeId || undefined,
         numero_informe: repNum,
@@ -1270,7 +1270,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
         observaciones:   String(formData.description    ?? '').trim() || undefined,
         recomendaciones: String(formData.recommendations ?? '').trim() || undefined,
       }).catch(() => {})
-    } catch (_e) { /* QR opcional */ }
+    } catch (_e) { /* Supabase opcional */ }
 
     // Create a new jsPDF instance
     const { jsPDF } = await import('jspdf');
@@ -1370,13 +1370,17 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     const qrX = pageWidth - margin - qrSize
     if (qrDataUrl) {
       try {
-        pdf.addImage(qrDataUrl, 'PNG', qrX, yPosition, qrSize, qrSize)
+        // Extraer solo la parte base64 si viene con prefijo data URL
+        const qrImgData = qrDataUrl.includes(',') ? qrDataUrl.split(',')[1] : qrDataUrl
+        pdf.addImage(qrImgData, 'PNG', qrX, yPosition, qrSize, qrSize)
         pdf.setFontSize(5.5)
         pdf.setFont('helvetica', 'normal')
         pdf.setTextColor(120, 120, 120)
         pdf.text('Escanear historial', qrX + qrSize / 2, yPosition + qrSize + 3, { align: 'center' })
         pdf.setTextColor(0, 0, 0)
-      } catch (_e) { console.warn('No se pudo agregar QR al PDF') }
+      } catch (e) { console.error('Error agregando QR al PDF:', e) }
+    } else {
+      console.warn('qrDataUrl es null — QR no generado')
     }
 
     // Company info (top right, a la izquierda del QR)
