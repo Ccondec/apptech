@@ -2525,7 +2525,7 @@ yPosition += 8;
                                 : 'bg-blue-100/60 border-transparent text-blue-500 hover:bg-white/60'
                             }`}
                           >
-                            {v.fecha ? v.fecha.replace(/(\d{2})\/(\d{2})\/(\d{4})/, (_, d, m, y) => `${d}/${m}/${y.slice(-2)}`) : `Visita ${i + 1}`}
+                            {v.numero_informe ?? (v.fecha ? v.fecha.replace(/(\d{2})\/(\d{2})\/(\d{4})/, (_, d, m, y) => `${d}/${m}/${y.slice(-2)}`) : `Visita ${i + 1}`)}
                           </button>
                         ))}
                       </div>

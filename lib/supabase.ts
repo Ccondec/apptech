@@ -262,7 +262,7 @@ export async function listarHistorialEquipo(equipoId: string): Promise<InformeRe
     .from('informes')
     .select('*')
     .eq('equipo_id', equipoId)
-    .order('fecha', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(20)
   return data ?? []
 }

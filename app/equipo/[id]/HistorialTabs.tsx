@@ -42,7 +42,7 @@ export default function HistorialTabs({ informes }: { informes: Informe[] }) {
                 : 'bg-gray-100 border-transparent text-gray-500 hover:bg-white'
             }`}
           >
-            {fmtFecha(inf.fecha) ?? `Visita ${i + 1}`}
+            {inf.numero_informe ?? fmtFecha(inf.fecha) ?? `Visita ${i + 1}`}
           </button>
         ))}
       </div>
