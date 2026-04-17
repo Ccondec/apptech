@@ -28,11 +28,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadUser(s: Session | null) {
     if (!s) { setUser(null); setLoading(false); return }
-    // Asegurar que el token esté activo antes de consultar
-    await supabase.auth.setSession({
-      access_token: s.access_token,
-      refresh_token: s.refresh_token,
-    })
     const { data } = await supabase
       .from('usuarios')
       .select('*, empresa:empresas(*)')
@@ -43,9 +38,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s)
-      loadUser(s)
+    // 1. Verificar sesión existente al montar
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      loadUser(session)
+    })
+
+    // 2. Escuchar cambios de auth (login / logout / refresh)
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setSession(s)
+        loadUser(s)
+      } else if (event === 'SIGNED_OUT') {
+        setSession(null)
+        setUser(null)
+        setLoading(false)
+      }
     })
 
     return () => listener.subscription.unsubscribe()
