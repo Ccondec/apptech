@@ -56,7 +56,13 @@ export interface EquipoRecord {
   capacity?: string
   serial?: string
   qr_code?: string
+  ubicacion?: string
   client_company?: string
+  client_contact?: string
+  client_address?: string
+  client_email?: string
+  client_city?: string
+  client_phone?: string
 }
 
 // ── Auth helpers ──────────────────────────────────────────────
@@ -166,17 +172,22 @@ export async function buscarEquipos(query: string): Promise<EquipoRecord[]> {
   if (!query.trim()) return []
   const { data } = await supabase
     .from('equipos')
-    .select('*, clientes(company)')
+    .select('*, clientes(company, contact, address, email, city, phone)')
     .ilike('serial', `%${query}%`)
     .limit(8)
 
   return (data ?? []).map((e: any) => ({
     ...e,
-    client_company: e.clientes?.company ?? '',
+    client_company:  e.clientes?.company  ?? '',
+    client_contact:  e.clientes?.contact  ?? '',
+    client_address:  e.clientes?.address  ?? '',
+    client_email:    e.clientes?.email    ?? '',
+    client_city:     e.clientes?.city     ?? '',
+    client_phone:    e.clientes?.phone    ?? '',
   }))
 }
 
-export async function guardarEquipo(data: Omit<EquipoRecord, 'id' | 'empresa_id' | 'client_company'>): Promise<EquipoRecord | null> {
+export async function guardarEquipo(data: Omit<EquipoRecord, 'id' | 'empresa_id' | 'client_company' | 'client_contact' | 'client_address' | 'client_email' | 'client_city' | 'client_phone'>): Promise<EquipoRecord | null> {
   const usuario = await getUsuarioActual()
   if (!usuario) return null
 

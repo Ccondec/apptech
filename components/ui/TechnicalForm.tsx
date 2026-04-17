@@ -975,11 +975,22 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
   const selectEquipment = useCallback(async (eq: EquipoRecord) => {
     setFormData(prev => ({
       ...prev,
-      equipmentBrand:    eq.brand    ?? '',
-      equipmentModel:    eq.model    ?? '',
-      equipmentCapacity: eq.capacity ?? '',
-      equipmentSerial:   eq.serial   ?? '',
-      qrCode:            eq.qr_code  ?? '',
+      // Equipo
+      equipmentBrand:    eq.brand     ?? '',
+      equipmentModel:    eq.model     ?? '',
+      equipmentCapacity: eq.capacity  ?? '',
+      equipmentSerial:   eq.serial    ?? '',
+      equipmentUbicacion: eq.ubicacion ?? '',
+      qrCode:            eq.qr_code   ?? '',
+      // Cliente vinculado
+      ...(eq.client_company ? {
+        clientCompany:  eq.client_company,
+        clientContact:  eq.client_contact  ?? '',
+        clientAddress:  eq.client_address  ?? '',
+        clientEmail:    eq.client_email    ?? '',
+        clientCity:     eq.client_city     ?? '',
+        clientPhone:    eq.client_phone    ?? '',
+      } : {}),
     }))
     setShowEquipmentSug(false)
     setSelectedEquipoId(eq.id)
@@ -1105,6 +1116,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       if (brand || model || serial) {
         await guardarEquipo({
           brand, model, capacity,
+          ubicacion: location,
           serial: serial || `${brand}-${model}-${Date.now()}`,
           qr_code: qrCodeId || undefined,
           client_id: savedClientId,
