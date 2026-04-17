@@ -14,18 +14,18 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params
   return {
-    title: `Equipo ${id} | Ion Energy`,
-    description: `Información técnica del equipo ${id}`,
+    title: `Equipo ${id} — Historial Técnico`,
+    description: `Historial de informes técnicos del equipo ${id}`,
   }
 }
 
 const fields = [
-  { key: 'cliente',   label: 'Cliente',      Icon: User        },
-  { key: 'serial',    label: 'N° de Serie',  Icon: Hash        },
-  { key: 'marca',     label: 'Marca',        Icon: Tag         },
-  { key: 'modelo',    label: 'Modelo',       Icon: Cpu         },
-  { key: 'capacidad', label: 'Capacidad',    Icon: Zap         },
-  { key: 'ubicacion', label: 'Ubicación',    Icon: MapPin      },
+  { key: 'cliente',   label: 'Cliente',      Icon: User          },
+  { key: 'serial',    label: 'N° de Serie',  Icon: Hash          },
+  { key: 'marca',     label: 'Marca',        Icon: Tag           },
+  { key: 'modelo',    label: 'Modelo',       Icon: Cpu           },
+  { key: 'capacidad', label: 'Capacidad',    Icon: Zap           },
+  { key: 'ubicacion', label: 'Ubicación',    Icon: MapPin        },
   { key: 'tecnico',   label: 'Técnico',      Icon: ClipboardList },
 ] as const
 
@@ -33,15 +33,13 @@ export default async function EquipoPage({ params }: Props) {
   const { id } = await params
   const qrCode = decodeURIComponent(id)
 
-  const { data, error } = await supabase
+  const { data: informes, error } = await supabase
     .from('informes')
     .select('*')
     .eq('qr_code', qrCode)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
 
-  if (error || !data) {
+  if (error || !informes || informes.length === 0) {
     return (
       <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
         <div className="text-center">
@@ -55,9 +53,7 @@ export default async function EquipoPage({ params }: Props) {
     )
   }
 
-  const fechaRegistro = new Date(data.created_at).toLocaleDateString('es-CO', {
-    year: 'numeric', month: 'long', day: 'numeric',
-  })
+  const ultimo = informes[0]
 
   return (
     <main className="min-h-screen bg-gray-50 flex flex-col items-center px-4 py-10">
@@ -66,41 +62,22 @@ export default async function EquipoPage({ params }: Props) {
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-100 mb-3">
           <CheckCircle className="w-8 h-8 text-green-600" />
         </div>
-        <h1 className="text-xl font-bold text-gray-900">Informe Técnico Verificado</h1>
-        <p className="text-sm text-gray-500 mt-1">Ion Energy S.A.S</p>
+        <h1 className="text-xl font-bold text-gray-900">Historial Técnico</h1>
+        <p className="text-sm text-gray-500 mt-1">Código: <strong>{qrCode}</strong></p>
       </div>
 
-      {/* Card */}
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-
-        {/* Header verde */}
-        <div className="bg-green-600 px-6 py-4 flex items-center justify-between text-white">
-          <div>
-            <p className="text-xs font-medium opacity-80 uppercase tracking-wide">Reporte N°</p>
-            <p className="text-2xl font-bold">{data.numero_informe || '—'}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs font-medium opacity-80 uppercase tracking-wide flex items-center gap-1 justify-end">
-              <Calendar className="w-3 h-3" /> Fecha
-            </p>
-            <p className="text-base font-semibold">{data.fecha || '—'}</p>
-          </div>
+      {/* Datos del equipo (del último informe) */}
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+        <div className="bg-green-600 px-6 py-4 text-white">
+          <p className="text-xs font-medium opacity-80 uppercase tracking-wide">Datos del Equipo</p>
+          <p className="text-lg font-bold mt-0.5">{ultimo.marca} {ultimo.modelo}</p>
         </div>
-
-        {/* Código QR */}
-        <div className="flex items-center gap-3 px-6 py-3 bg-green-50 border-b border-green-100">
-          <Hash className="w-4 h-4 text-green-600" />
-          <span className="text-xs font-medium text-green-700 uppercase tracking-wide">Código de equipo:</span>
-          <span className="text-sm font-bold text-green-800">{qrCode}</span>
-        </div>
-
-        {/* Datos */}
         <div className="divide-y divide-gray-50">
           {fields.map(({ key, label, Icon }) => {
-            const value = data[key]
+            const value = ultimo[key]
             if (!value) return null
             return (
-              <div key={key} className="flex items-center gap-4 px-6 py-4">
+              <div key={key} className="flex items-center gap-4 px-6 py-3">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-50 flex items-center justify-center">
                   <Icon className="w-4 h-4 text-green-600" />
                 </div>
@@ -112,16 +89,42 @@ export default async function EquipoPage({ params }: Props) {
             )
           })}
         </div>
+      </div>
 
-        {/* Fecha de registro */}
-        <div className="flex items-center gap-2 px-6 py-3 bg-gray-50 border-t border-gray-100">
-          <Clock className="w-3.5 h-3.5 text-gray-400" />
-          <span className="text-xs text-gray-400">Último informe registrado: {fechaRegistro}</span>
+      {/* Historial de visitas */}
+      <div className="w-full max-w-md">
+        <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <Clock className="w-4 h-4" /> Historial de visitas ({informes.length})
+        </h2>
+        <div className="space-y-3">
+          {informes.map((inf: any, i: number) => (
+            <div key={inf.id} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                  N° {inf.numero_informe || '—'}
+                </span>
+                <span className="flex items-center gap-1 text-xs text-gray-400">
+                  <Calendar className="w-3 h-3" /> {inf.fecha || '—'}
+                </span>
+              </div>
+              {inf.tecnico && (
+                <p className="text-xs text-gray-500 flex items-center gap-1">
+                  <ClipboardList className="w-3 h-3" /> Técnico: <span className="font-medium text-gray-700">{inf.tecnico}</span>
+                </p>
+              )}
+              {inf.tipo_reporte && (
+                <p className="text-xs text-gray-400 mt-1 capitalize">{inf.tipo_reporte}</p>
+              )}
+              {i === 0 && (
+                <span className="inline-block mt-2 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">Último servicio</span>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
       <p className="mt-8 text-xs text-gray-400 text-center">
-        Documento generado por el sistema Servtech de Ion Energy S.A.S.<br />
+        Sistema de Informes Técnicos<br />
         Para más información contacte a su técnico asignado.
       </p>
     </main>
