@@ -1365,17 +1365,32 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     pdf.setFontSize(10);
     pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 22, { align: 'center' });
 
-    // Company info (top right)
+    // QR code — esquina superior derecha (22×22 mm)
+    const qrSize = 22
+    const qrX = pageWidth - margin - qrSize
+    if (qrDataUrl) {
+      try {
+        pdf.addImage(qrDataUrl, 'PNG', qrX, yPosition, qrSize, qrSize)
+        pdf.setFontSize(5.5)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(120, 120, 120)
+        pdf.text('Escanear historial', qrX + qrSize / 2, yPosition + qrSize + 3, { align: 'center' })
+        pdf.setTextColor(0, 0, 0)
+      } catch (_e) { console.warn('No se pudo agregar QR al PDF') }
+    }
+
+    // Company info (top right, a la izquierda del QR)
+    const textRight = qrDataUrl ? qrX - 3 : pageWidth - margin
     pdf.setFontSize(12);
     pdf.setFont('helvetica', 'bold');
-    pdf.text(companyInfo.name, pageWidth - margin, yPosition + 5, { align: 'right' });
+    pdf.text(companyInfo.name, textRight, yPosition + 5, { align: 'right' });
     pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
-    pdf.text(companyInfo.address, pageWidth - margin, yPosition + 10, { align: 'right' });
-    pdf.text(companyInfo.phone, pageWidth - margin, yPosition + 14, { align: 'right' });
-    pdf.text(companyInfo.email, pageWidth - margin, yPosition + 18, { align: 'right' });
+    pdf.text(companyInfo.address, textRight, yPosition + 10, { align: 'right' });
+    pdf.text(companyInfo.phone,   textRight, yPosition + 14, { align: 'right' });
+    pdf.text(companyInfo.email,   textRight, yPosition + 18, { align: 'right' });
 
-    yPosition += 35;
+    yPosition += 38;
 
     // Horizontal line
     pdf.setLineWidth(0.5);
