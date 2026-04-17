@@ -914,25 +914,41 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     setReportNumber(value && value > 0 ? value : 1);
   }, []);
 
+  // Comprime cualquier imagen a JPEG con límite de dimensión y calidad
+  const compressImage = useCallback((dataUrl: string, maxW: number, maxH: number, quality: number): Promise<string> => {
+    return new Promise(resolve => {
+      const img = new Image()
+      img.onload = () => {
+        const ratio = Math.min(maxW / img.width, maxH / img.height, 1)
+        const canvas = document.createElement('canvas')
+        canvas.width  = Math.round(img.width  * ratio)
+        canvas.height = Math.round(img.height * ratio)
+        const ctx = canvas.getContext('2d')!
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.onerror = () => resolve(dataUrl)
+      img.src = dataUrl
+    })
+  }, [])
+
   const handleLogoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Check file size
-      if (file.size > 2 * 1024 * 1024) {
-        alert('El logo es muy grande. Máximo 2MB.');
-        return;
-      }
+    if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = event.target?.result;
-        if (typeof result === 'string') {
-          setLogo(result);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  }, []);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const result = event.target?.result;
+      if (typeof result === 'string') {
+        // Comprimir logo: máx 400×200 px, calidad 0.7 JPEG
+        const compressed = await compressImage(result, 400, 200, 0.7)
+        setLogo(compressed);
+      }
+    };
+    reader.readAsDataURL(file);
+  }, [compressImage]);
 
   const handleFieldChange = useCallback((field: string, value: unknown) => {
     setFormData((prev: FormData) => ({ ...prev, [field]: value }));
@@ -1024,8 +1040,11 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
         email:   config.email_contacto   ?? '',
       })
       if (config.logo && !logo) {
-        setLogo(config.logo)
-        localStorage.setItem('apptech_logo', config.logo)
+        // Comprimir logo al cargarlo desde la config de empresa
+        compressImage(config.logo, 400, 200, 0.7).then(compressed => {
+          setLogo(compressed)
+          localStorage.setItem('apptech_logo', compressed)
+        })
       }
     })
   }, [empresaId]);
@@ -1868,8 +1887,16 @@ yPosition += 8;
       yPosition += 5;
     }
 
-    // Photos Section — sin fotos en PDF de correo para reducir tamaño
-    const photosToRender: Photo[] = emailPhotosRef.current ?? (formData.photos ?? [])
+    // Photos Section — comprimir fotos antes de incrustar en PDF
+    const rawPhotos: Photo[] = emailPhotosRef.current ?? (formData.photos ?? [])
+    const photosToRender: Photo[] = await Promise.all(
+      rawPhotos.map(async (p) => ({
+        ...p,
+        url: typeof p.url === 'string'
+          ? await compressImage(p.url, 900, 675, 0.55)
+          : p.url,
+      }))
+    )
     if (photosToRender.length > 0) {
       // Add section divider
       addSectionDivider();
