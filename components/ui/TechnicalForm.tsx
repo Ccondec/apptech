@@ -2653,8 +2653,8 @@ yPosition += 8;
             </CollapsibleSection>
             </>) /* fin bloque UPS */}
 
-            {/* Equipment Status */}
-            <CollapsibleSection title="Estado del Equipo" icon={Wrench}>
+            {/* Equipment Status — solo UPS */}
+            {(!formData.reportType || formData.reportType === 'ups') && <CollapsibleSection title="Estado del Equipo" icon={Wrench}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="rectifierStatus" className="text-sm">Estado Rectificador</Label>
@@ -2709,7 +2709,7 @@ yPosition += 8;
                   </select>
                 </div>
               </div>
-            </CollapsibleSection>
+            </CollapsibleSection>}
 
             {/* Description and Recommendations */}
             <CollapsibleSection title="Descripción y Recomendaciones" icon={FileText}>
