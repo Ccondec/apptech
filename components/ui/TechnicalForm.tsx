@@ -1224,16 +1224,18 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     const tecnico  = String(formData.technicianName ?? technician).trim()
 
     // Generar QR primero (independiente de Supabase)
-    let qrDataUrl: string | null = null
+    let qrCanvas: HTMLCanvasElement | null = null
     try {
-      const QRCode = (await import('qrcode')).default
+      const QRCode = await import('qrcode')
       const qrText = qrCodeId
         ? `https://apptech-one.vercel.app/equipo/${encodeURIComponent(qrCodeId)}`
         : `https://apptech-one.vercel.app/informe?n=${repNum}&fecha=${encodeURIComponent(fecha)}&cliente=${encodeURIComponent(client)}`
-      qrDataUrl = await QRCode.toDataURL(qrText, {
-        width: 300, margin: 2, errorCorrectionLevel: 'M',
+      const canvas = document.createElement('canvas')
+      await QRCode.toCanvas(canvas, qrText, {
+        width: 200, margin: 2, errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#ffffff' },
       })
+      qrCanvas = canvas
     } catch (e) { console.error('Error generando QR:', e) }
 
     // Sincronizar con Supabase (no bloquea el PDF)
@@ -1368,11 +1370,9 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     // QR code — esquina superior derecha (22×22 mm)
     const qrSize = 22
     const qrX = pageWidth - margin - qrSize
-    if (qrDataUrl) {
+    if (qrCanvas) {
       try {
-        // Extraer solo la parte base64 si viene con prefijo data URL
-        const qrImgData = qrDataUrl.includes(',') ? qrDataUrl.split(',')[1] : qrDataUrl
-        pdf.addImage(qrImgData, 'PNG', qrX, yPosition, qrSize, qrSize)
+        pdf.addImage(qrCanvas, 'PNG', qrX, yPosition, qrSize, qrSize)
         pdf.setFontSize(5.5)
         pdf.setFont('helvetica', 'normal')
         pdf.setTextColor(120, 120, 120)
@@ -1380,11 +1380,11 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
         pdf.setTextColor(0, 0, 0)
       } catch (e) { console.error('Error agregando QR al PDF:', e) }
     } else {
-      console.warn('qrDataUrl es null — QR no generado')
+      console.warn('qrCanvas es null — QR no generado')
     }
 
     // Company info (top right, a la izquierda del QR)
-    const textRight = qrDataUrl ? qrX - 3 : pageWidth - margin
+    const textRight = qrCanvas ? qrX - 3 : pageWidth - margin
     pdf.setFontSize(12);
     pdf.setFont('helvetica', 'bold');
     pdf.text(companyInfo.name, textRight, yPosition + 5, { align: 'right' });
