@@ -1345,45 +1345,62 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       return yPosition;
     };
 
+    // Tipo de informe (etiqueta para el label)
+    const tipoLabel: Record<string, string> = {
+      ups:          'UPS / Baterías',
+      aire:         'Aires Acondicionados',
+      planta:       'Planta Eléctrica',
+      fotovoltaico: 'Sistema Fotovoltaico',
+      otros:        'Otros Servicios',
+    }
+    const tipoInforme = tipoLabel[formData.reportType as string] ?? 'UPS / Baterías'
+
     // Logo (izquierda) — 40×20 mm
     const logoW = 40, logoH = 20
     if (logo) {
       try {
         pdf.addImage(logo, 'JPEG', margin, yPosition, logoW, logoH);
-      } catch (_e) {
-        console.warn('Could not add logo to PDF');
-      }
+      } catch (_e) { console.warn('Could not add logo to PDF') }
     }
 
-    // QR code — al lado derecho del logo, mismo alto (20×20 mm)
-    const qrSize = 20
-    const qrX = margin + logoW + 4   // 4 mm de separación del logo
+    // Title and report info (center)
+    pdf.setFontSize(16);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('REPORTE TÉCNICO', pageWidth / 2, yPosition + 7, { align: 'center' });
+
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(80, 80, 80);
+    pdf.text(tipoInforme.toUpperCase(), pageWidth / 2, yPosition + 13, { align: 'center' });
+    pdf.setTextColor(0, 0, 0);
+
+    pdf.setFontSize(12);
+    pdf.setTextColor(200, 0, 0);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`N° Reporte: ${fmtReportNum(reportNumber)}`, pageWidth / 2, yPosition + 20, { align: 'center' });
+    pdf.setTextColor(0, 0, 0);
+
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 26, { align: 'center' });
+
+    // QR code — centrado debajo del título (18×18 mm)
+    const qrSize = 18
+    const qrX = pageWidth / 2 - qrSize / 2
+    const qrY = yPosition + 29
     if (qrCanvas) {
       try {
-        pdf.addImage(qrCanvas, 'PNG', qrX, yPosition, qrSize, qrSize)
+        pdf.addImage(qrCanvas, 'PNG', qrX, qrY, qrSize, qrSize)
         pdf.setFontSize(5)
         pdf.setFont('helvetica', 'normal')
         pdf.setTextColor(120, 120, 120)
-        pdf.text('Historial', qrX + qrSize / 2, yPosition + qrSize + 2.5, { align: 'center' })
+        pdf.text('Escanear para historial', pageWidth / 2, qrY + qrSize + 2.5, { align: 'center' })
         pdf.setTextColor(0, 0, 0)
       } catch (e) { console.error('Error agregando QR al PDF:', e) }
     }
 
-    // Title and report info (center)
-    pdf.setFontSize(18);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('REPORTE TÉCNICO', pageWidth / 2, yPosition + 8, { align: 'center' });
-
-    pdf.setFontSize(12);
-    pdf.setTextColor(200, 0, 0);
-    pdf.text(`N° Reporte: ${fmtReportNum(reportNumber)}`, pageWidth / 2, yPosition + 16, { align: 'center' });
-    pdf.setTextColor(0, 0, 0);
-
-    pdf.setFontSize(10);
-    pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 22, { align: 'center' });
-
     // Company info (derecha)
-    pdf.setFontSize(12);
+    pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
     pdf.text(companyInfo.name, pageWidth - margin, yPosition + 5, { align: 'right' });
     pdf.setFontSize(8);
@@ -1392,7 +1409,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     pdf.text(companyInfo.phone,   pageWidth - margin, yPosition + 14, { align: 'right' });
     pdf.text(companyInfo.email,   pageWidth - margin, yPosition + 18, { align: 'right' });
 
-    yPosition += 35;
+    yPosition += 52;  // logo(20) + título+número+fecha(9) + QR(18) + label(3) + gap
 
     // Horizontal line
     pdf.setLineWidth(0.5);
