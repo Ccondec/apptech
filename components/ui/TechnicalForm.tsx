@@ -534,25 +534,6 @@ const ChecklistSection = ({ checkedItems, onCheckChange }: { checkedItems: strin
 
 // Service Info Section: OT, hours, next visit
 const ServiceInfoSection = ({ formData, onChange, technician }: { formData: Record<string, any>; onChange: (field: string, value: string) => void; technician: string }) => {
-  const [startAuto, setStartAuto] = React.useState(false);
-  const [endAuto,   setEndAuto]   = React.useState(false);
-
-  const nowHHMM = () => new Date().toTimeString().slice(0, 5);
-
-  React.useEffect(() => {
-    if (!startAuto) return;
-    onChange('timeStart', nowHHMM());
-    const id = setInterval(() => onChange('timeStart', nowHHMM()), 1000);
-    return () => clearInterval(id);
-  }, [startAuto]);
-
-  React.useEffect(() => {
-    if (!endAuto) return;
-    onChange('timeEnd', nowHHMM());
-    const id = setInterval(() => onChange('timeEnd', nowHHMM()), 1000);
-    return () => clearInterval(id);
-  }, [endAuto]);
-
   const duration = React.useMemo(() => {
     const start = formData.timeStart;
     const end   = formData.timeEnd;
@@ -566,35 +547,10 @@ const ServiceInfoSection = ({ formData, onChange, technician }: { formData: Reco
     return h > 0 ? `${h}h ${m}min` : `${m}min`;
   }, [formData.timeStart, formData.timeEnd]);
 
-  const TimeField = ({ field, label, auto, setAuto }: { field: string; label: string; auto: boolean; setAuto: (v: boolean) => void }) => (
-    <div className="space-y-2">
-      <Label htmlFor={field}>{label}</Label>
-      <div className="flex gap-2">
-        <Input
-          id={field}
-          type="time"
-          value={String(formData[field] ?? '')}
-          onChange={(e) => { setAuto(false); onChange(field, e.target.value); }}
-          className="flex-1"
-          readOnly={auto}
-        />
-        <button
-          type="button"
-          onClick={() => { setAuto(false); onChange(field, nowHHMM()); }}
-          className={`px-2.5 py-2 text-xs border rounded-md font-medium transition-colors ${!auto ? 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200' : 'bg-gray-50 text-gray-400 border-gray-200'}`}
-        >
-          Manual
-        </button>
-        <button
-          type="button"
-          onClick={() => setAuto(true)}
-          className={`px-2.5 py-2 text-xs border rounded-md font-medium transition-colors ${auto ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'}`}
-        >
-          Auto
-        </button>
-      </div>
-    </div>
-  );
+  const nowHHMM = () => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  };
 
   return (
     <CollapsibleSection title="Información del Servicio" icon={Clock} initiallyOpen={true}>
@@ -623,8 +579,52 @@ const ServiceInfoSection = ({ formData, onChange, technician }: { formData: Reco
             onChange={(e) => onChange('nextVisit', e.target.value)}
           />
         </div>
-        <TimeField field="timeStart" label="Hora de Entrada" auto={startAuto} setAuto={setStartAuto} />
-        <TimeField field="timeEnd"   label="Hora de Salida"  auto={endAuto}   setAuto={setEndAuto} />
+        <div className="space-y-2">
+          <Label htmlFor="timeStart">Hora de Entrada</Label>
+          <div className="flex gap-2">
+            <Input
+              id="timeStart"
+              type="time"
+              value={String(formData.timeStart ?? '')}
+              onChange={(e) => onChange('timeStart', e.target.value)}
+              className="flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => onChange('timeStart', nowHHMM())}
+              title="Registrar hora actual de entrada"
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3 rounded-md text-xs font-medium text-white transition-colors ${
+                formData.timeStart ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              {formData.timeStart ? '✓' : 'Iniciar'}
+            </button>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="timeEnd">Hora de Salida</Label>
+          <div className="flex gap-2">
+            <Input
+              id="timeEnd"
+              type="time"
+              value={String(formData.timeEnd ?? '')}
+              onChange={(e) => onChange('timeEnd', e.target.value)}
+              className="flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => onChange('timeEnd', nowHHMM())}
+              title="Registrar hora actual de salida"
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3 rounded-md text-xs font-medium text-white transition-colors ${
+                formData.timeEnd ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              {formData.timeEnd ? '✓' : 'Finalizar'}
+            </button>
+          </div>
+        </div>
         <div className="space-y-2">
           <Label>Tiempo Total</Label>
           <div className="h-10 px-3 flex items-center border rounded-md bg-gray-50 text-sm font-medium text-green-700">
