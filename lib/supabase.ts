@@ -1,0 +1,282 @@
+import { createClient } from '@supabase/supabase-js'
+
+const SUPABASE_URL = 'https://deouxnumhspmollumsoz.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRlb3V4bnVtaHNwbW9sbHVtc296Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MzU1MDIsImV4cCI6MjA5MjAxMTUwMn0.V4nWluFT7-7zN7y8TCpnOAu01bhMeKpG4eZCc-8eFGw'
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+// ── Tipos ─────────────────────────────────────────────────────
+
+export interface Empresa {
+  id: string
+  nombre: string
+  license_key: string
+  activa: boolean
+  fecha_expiracion: string | null
+  nombre_comercial?: string
+  telefono?: string
+  direccion?: string
+  email_contacto?: string
+  logo?: string
+}
+
+export interface EmpresaConfig {
+  nombre_comercial: string
+  telefono: string
+  direccion: string
+  email_contacto: string
+  logo: string
+}
+
+export interface Usuario {
+  id: string
+  empresa_id: string
+  nombre: string
+  rol: 'admin' | 'tecnico'
+  activo: boolean
+}
+
+export interface ClienteRecord {
+  id: string
+  empresa_id: string
+  company: string
+  contact?: string
+  address?: string
+  email?: string
+  city?: string
+  phone?: string
+}
+
+export interface EquipoRecord {
+  id: string
+  empresa_id: string
+  client_id?: string
+  brand?: string
+  model?: string
+  capacity?: string
+  serial?: string
+  qr_code?: string
+  client_company?: string
+}
+
+// ── Auth helpers ──────────────────────────────────────────────
+
+export async function getSession() {
+  const { data } = await supabase.auth.getSession()
+  return data.session
+}
+
+export async function getUsuarioActual(): Promise<(Usuario & { empresa: Empresa }) | null> {
+  const session = await getSession()
+  if (!session) return null
+
+  const { data } = await supabase
+    .from('usuarios')
+    .select('*, empresa:empresas(*)')
+    .eq('id', session.user.id)
+    .single()
+
+  return data ?? null
+}
+
+// ── Registro con clave de licencia ────────────────────────────
+
+export async function registrarConLicencia(
+  email: string,
+  password: string,
+  nombre: string,
+  licenseKey: string,
+  rol: 'admin' | 'tecnico' = 'tecnico'
+): Promise<{ ok: boolean; error?: string }> {
+  // 1. Validar clave de licencia
+  const { data: empresa, error: empErr } = await supabase
+    .from('empresas')
+    .select('id, activa, fecha_expiracion')
+    .eq('license_key', licenseKey.trim().toUpperCase())
+    .single()
+
+  if (empErr || !empresa) return { ok: false, error: 'Clave de licencia inválida.' }
+  if (!empresa.activa) return { ok: false, error: 'La licencia está inactiva.' }
+  if (empresa.fecha_expiracion && new Date(empresa.fecha_expiracion) < new Date()) {
+    return { ok: false, error: 'La licencia ha expirado.' }
+  }
+
+  // 2. Si quiere ser admin, verificar que no exista uno ya
+  if (rol === 'admin') {
+    const { count } = await supabase
+      .from('usuarios')
+      .select('id', { count: 'exact', head: true })
+      .eq('empresa_id', empresa.id)
+      .eq('rol', 'admin')
+
+    if ((count ?? 0) > 0) {
+      return { ok: false, error: 'Esta empresa ya tiene un administrador registrado.' }
+    }
+  }
+
+  // 3. Crear usuario en Supabase Auth
+  const { data: authData, error: authErr } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { nombre } },
+  })
+
+  if (authErr || !authData.user) return { ok: false, error: authErr?.message ?? 'Error al crear cuenta.' }
+
+  // 4. Crear perfil en tabla usuarios
+  const { error: profileErr } = await supabase.from('usuarios').insert({
+    id: authData.user.id,
+    empresa_id: empresa.id,
+    nombre,
+    rol,
+  })
+
+  if (profileErr) return { ok: false, error: 'Error al crear perfil.' }
+  return { ok: true }
+}
+
+// ── Clientes ──────────────────────────────────────────────────
+
+export async function buscarClientes(query: string): Promise<ClienteRecord[]> {
+  if (!query.trim()) return []
+  const { data } = await supabase
+    .from('clientes')
+    .select('*')
+    .ilike('company', `%${query}%`)
+    .limit(8)
+  return data ?? []
+}
+
+export async function guardarCliente(data: Omit<ClienteRecord, 'id' | 'empresa_id'>): Promise<ClienteRecord | null> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return null
+
+  const { data: saved } = await supabase
+    .from('clientes')
+    .upsert({ ...data, empresa_id: usuario.empresa_id }, { onConflict: 'company,empresa_id' })
+    .select()
+    .single()
+
+  return saved ?? null
+}
+
+// ── Equipos ───────────────────────────────────────────────────
+
+export async function buscarEquipos(query: string): Promise<EquipoRecord[]> {
+  if (!query.trim()) return []
+  const { data } = await supabase
+    .from('equipos')
+    .select('*, clientes(company)')
+    .ilike('serial', `%${query}%`)
+    .limit(8)
+
+  return (data ?? []).map((e: any) => ({
+    ...e,
+    client_company: e.clientes?.company ?? '',
+  }))
+}
+
+export async function guardarEquipo(data: Omit<EquipoRecord, 'id' | 'empresa_id' | 'client_company'>): Promise<EquipoRecord | null> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return null
+
+  const { data: saved } = await supabase
+    .from('equipos')
+    .upsert({ ...data, empresa_id: usuario.empresa_id }, { onConflict: 'serial,empresa_id' })
+    .select()
+    .single()
+
+  return saved ?? null
+}
+
+// ── Informes ──────────────────────────────────────────────────
+
+export interface InformeRecord {
+  id: string
+  empresa_id: string
+  equipo_id?: string
+  qr_code?: string
+  numero_informe?: string
+  reporte_numero?: string
+  fecha: string
+  cliente: string
+  serial?: string
+  marca?: string
+  modelo?: string
+  capacidad?: string
+  ubicacion?: string
+  tecnico?: string
+  tipo_reporte?: string
+  created_at: string
+}
+
+export async function guardarInforme(informe: {
+  qr_code?: string
+  numero_informe: string
+  fecha: string
+  cliente: string
+  serial: string
+  marca: string
+  modelo: string
+  capacidad: string
+  ubicacion: string
+  tecnico: string
+  equipo_id?: string
+  tipo_reporte?: string
+}): Promise<{ ok: boolean; error?: string }> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return { ok: false, error: 'No autenticado.' }
+
+  const { error } = await supabase.from('informes').insert({
+    ...informe,
+    empresa_id: usuario.empresa_id,
+  })
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function listarHistorialEquipo(equipoId: string): Promise<InformeRecord[]> {
+  const { data } = await supabase
+    .from('informes')
+    .select('*')
+    .eq('equipo_id', equipoId)
+    .order('fecha', { ascending: false })
+    .limit(20)
+  return data ?? []
+}
+
+// ── Configuración de empresa ──────────────────────────────────
+
+export async function getEmpresaConfig(empresaId: string): Promise<EmpresaConfig | null> {
+  const { data } = await supabase
+    .from('empresas')
+    .select('nombre_comercial, telefono, direccion, email_contacto, logo')
+    .eq('id', empresaId)
+    .single()
+  return data ?? null
+}
+
+export async function updateEmpresaConfig(empresaId: string, config: Partial<EmpresaConfig>): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase
+    .from('empresas')
+    .update(config)
+    .eq('id', empresaId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+// ── Usuarios de la empresa (para lista de técnicos) ───────────
+
+export async function listarTecnicos(): Promise<Usuario[]> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return []
+
+  const { data } = await supabase
+    .from('usuarios')
+    .select('*')
+    .eq('empresa_id', usuario.empresa_id)
+    .eq('activo', true)
+
+  return data ?? []
+}
