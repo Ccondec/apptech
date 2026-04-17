@@ -54,11 +54,10 @@ export default function HistorialTabs({ informes }: { informes: Informe[] }) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3">
             <div>
               <p className="text-[10px] text-gray-400 uppercase tracking-wide">Informe</p>
-              <p className="text-xs font-bold text-green-700">N° {v.numero_informe ?? v.reporte_numero ?? '—'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Fecha</p>
-              <p className="text-xs font-medium text-gray-700">{fmtFecha(v.fecha)}</p>
+              <p className="text-xs font-bold text-green-700">
+                N° {v.numero_informe ?? v.reporte_numero ?? '—'}
+                {v.fecha && <span className="ml-1 font-normal text-gray-400">· {fmtFecha(v.fecha)}</span>}
+              </p>
             </div>
             {v.tipo_reporte && (
               <div>

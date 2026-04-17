@@ -2539,11 +2539,10 @@ yPosition += 8;
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
                               <div>
                                 <p className="text-[10px] text-gray-400 uppercase tracking-wide">Informe</p>
-                                <p className="text-xs font-bold text-blue-700">#{v.numero_informe ?? v.reporte_numero ?? '—'}</p>
-                              </div>
-                              <div>
-                                <p className="text-[10px] text-gray-400 uppercase tracking-wide">Fecha</p>
-                                <p className="text-xs font-medium text-gray-700">{v.fecha ? v.fecha.replace(/(\d{2})\/(\d{2})\/(\d{4})/, (_, d, m, y) => `${d}/${m}/${y.slice(-2)}`) : '—'}</p>
+                                <p className="text-xs font-bold text-blue-700">
+                                  #{v.numero_informe ?? v.reporte_numero ?? '—'}
+                                  {v.fecha && <span className="ml-1 font-normal text-gray-400">· {v.fecha.replace(/(\d{2})\/(\d{2})\/(\d{4})/, (_, d, m, y) => `${d}/${m}/${y.slice(-2)}`)}</span>}
+                                </p>
                               </div>
                               {v.tipo_reporte && (
                                 <div>
