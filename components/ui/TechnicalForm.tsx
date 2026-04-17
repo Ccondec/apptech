@@ -2194,14 +2194,8 @@ yPosition += 8;
       setReportNumber(nextReport);
       localStorage.setItem('apptech_report_number', String(nextReport));
 
-      // Conservar datos del cliente y técnico, limpiar solo datos del equipo
+      // Limpiar todo el formulario, conservar solo técnico
       setFormData((prev: FormData) => ({
-        clientCompany:     prev.clientCompany,
-        clientContact:     prev.clientContact,
-        clientAddress:     prev.clientAddress,
-        clientEmail:       prev.clientEmail,
-        clientCity:        prev.clientCity,
-        clientPhone:       prev.clientPhone,
         technicianSelect:  prev.technicianSelect,
         technicianName:    prev.technicianName,
         technicianId:      prev.technicianId,
@@ -2213,7 +2207,7 @@ yPosition += 8;
       setHistorialTab(0)
       setSelectedEquipoId(null)
 
-      alert('Reporte generado. Datos del cliente conservados para el siguiente equipo.');
+      alert('Reporte generado exitosamente.');
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Error al generar el reporte');
