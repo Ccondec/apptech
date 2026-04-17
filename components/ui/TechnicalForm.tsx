@@ -1090,20 +1090,24 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       })
 
       // Guardar cliente y equipo en Supabase
+      let savedClientId: string | undefined
       if (client) {
-        await guardarCliente({
+        const savedClient = await guardarCliente({
           company: client,
           contact: formData.clientContact as string ?? '',
           address: formData.clientAddress as string ?? '',
           email:   formData.clientEmail   as string ?? '',
           city:    formData.clientCity    as string ?? '',
           phone:   formData.clientPhone   as string ?? '',
-        }).catch(() => {})
+        }).catch(() => null)
+        savedClientId = savedClient?.id
       }
-      if (serial) {
+      if (brand || model || serial) {
         await guardarEquipo({
-          brand: brand, model, capacity, serial,
+          brand, model, capacity,
+          serial: serial || `${brand}-${model}-${Date.now()}`,
           qr_code: qrCodeId || undefined,
+          client_id: savedClientId,
         }).catch(() => {})
       }
       // Guardar informe
