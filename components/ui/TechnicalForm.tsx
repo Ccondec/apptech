@@ -1,17 +1,33 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
+import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, getEmpresaConfig, listarHistorialEquipo, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
+import AireParams from './AireParams'
+import PlantaParams from './PlantaParams'
+import FotovoltaicoParams from './FotovoltaicoParams'
+import OtrosParams from './OtrosParams'
 
 type Photo = { id: number; url: string; description: string };
 type MaterialRow = { id: string; item: string; qty: string; ref: string };
+type ReportType = 'ups' | 'aire' | 'planta' | 'fotovoltaico' | 'otros';
+
+const REPORT_TYPES: { id: ReportType; label: string; icon: string }[] = [
+  { id: 'ups',          label: 'UPS / Baterías',       icon: '🔋' },
+  { id: 'aire',         label: 'Aires Acondicionados', icon: '❄️' },
+  { id: 'planta',       label: 'Plantas Eléctricas',   icon: '⚡' },
+  { id: 'fotovoltaico', label: 'Sistema Fotovoltaico', icon: '☀️' },
+  { id: 'otros',        label: 'Otros Informes',       icon: '📋' },
+];
+
 type FormData = {
+  reportType?: ReportType;
   clientCompany?: string; clientContact?: string; clientAddress?: string;
   clientEmail?: string; clientCity?: string; clientPhone?: string;
   technicianSelect?: string; technicianName?: string; technicianId?: string;
   workOrder?: string; timeStart?: string; timeEnd?: string; nextVisit?: string;
   equipmentBrand?: string; equipmentModel?: string; equipmentCapacity?: string;
   equipmentSerial?: string; equipmentLocation?: string; equipmentUbicacion?: string;
-  capacity?: string;
+  capacity?: string; qrCode?: string;
   rectifierStatus?: string; chargerStatus?: string; inverterStatus?: string; batteryStatus?: string;
   workDescription?: string; recommendations?: string;
   clientSignature?: string | null; technicianSignature?: string | null;
@@ -24,7 +40,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { Wrench, User, FileText, Camera, X, Pen, Download, ChevronDown, Clock, Plus, Trash2, Package, LogOut } from 'lucide-react';
+import { Wrench, User, FileText, Camera, X, Pen, Download, ChevronDown, Clock, Plus, Trash2, Package, LogOut, Mail, MessageCircle } from 'lucide-react';
 
 // Optimized SignaturePad Component
 const SignaturePad = ({ onSave, onClear, isSaved = false, id }: { onSave: (data: string) => void; onClear: () => void; isSaved?: boolean; id: string }) => {
@@ -258,8 +274,8 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
 
     const img = new Image();
     img.onload = () => {
-      const MAX_WIDTH = 1200;
-      const MAX_HEIGHT = 900;
+      const MAX_WIDTH = 800;
+      const MAX_HEIGHT = 600;
       
       let width = img.width;
       let height = img.height;
@@ -280,7 +296,7 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
 
-      const normalizedUrl = canvas.toDataURL('image/jpeg', 0.75);
+      const normalizedUrl = canvas.toDataURL('image/jpeg', 0.60);
 
       setFormData((prev: Record<string, any>) => ({
         ...prev,
@@ -560,26 +576,46 @@ const ServiceInfoSection = ({ formData, onChange, technician }: { formData: Reco
         </div>
         <div className="space-y-2">
           <Label htmlFor="timeStart">Hora de Entrada</Label>
-          <Input
-            id="timeStart"
-            type="time"
-            value={String(formData.timeStart ?? '')}
-            onChange={(e) => onChange('timeStart', e.target.value)}
-          />
+          <div className="flex gap-2">
+            <Input
+              id="timeStart"
+              type="time"
+              value={String(formData.timeStart ?? '')}
+              onChange={(e) => onChange('timeStart', e.target.value)}
+              className="flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => onChange('timeStart', new Date().toTimeString().slice(0, 5))}
+              className="px-3 py-2 text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-md font-medium transition-colors"
+            >
+              Ahora
+            </button>
+          </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="timeEnd">Hora de Salida</Label>
-          <Input
-            id="timeEnd"
-            type="time"
-            value={String(formData.timeEnd ?? '')}
-            onChange={(e) => onChange('timeEnd', e.target.value)}
-          />
+          <div className="flex gap-2">
+            <Input
+              id="timeEnd"
+              type="time"
+              value={String(formData.timeEnd ?? '')}
+              onChange={(e) => onChange('timeEnd', e.target.value)}
+              className="flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => onChange('timeEnd', new Date().toTimeString().slice(0, 5))}
+              className="px-3 py-2 text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-md font-medium transition-colors"
+            >
+              Ahora
+            </button>
+          </div>
         </div>
         <div className="space-y-2">
           <Label>Tiempo Total</Label>
           <div className="h-10 px-3 flex items-center border rounded-md bg-gray-50 text-sm font-medium text-green-700">
-            {duration || '—'}
+            {duration || <span className="text-gray-400 font-normal">Registra entrada y salida</span>}
           </div>
         </div>
       </div>
@@ -766,7 +802,7 @@ const ServiceTypeSection = ({ selectedServices, onServiceChange }: { selectedSer
 };
 
 // Main Component with optimizations
-const TechnicalForm = ({ technician, onLogout }: { technician: string; onLogout: () => void }) => {
+const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string; empresaId?: string; onLogout?: () => void }) => {
   const [formData, setFormData] = useState<FormData>({});
   const [reportNumber, setReportNumber] = useState(1);
   const [isEditingReportNumber, setIsEditingReportNumber] = useState(false);
@@ -774,6 +810,21 @@ const TechnicalForm = ({ technician, onLogout }: { technician: string; onLogout:
   const [isMobile, setIsMobile] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved'
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [emailError, setEmailError] = useState('');
+  const [shareAction, setShareAction] = useState<'download' | 'email' | 'whatsapp'>('download');
+
+  // Autocomplete Supabase
+  const [clientSuggestions, setClientSuggestions] = useState<ClienteRecord[]>([])
+  const [showClientSug, setShowClientSug] = useState(false)
+  const [equipmentSuggestions, setEquipmentSuggestions] = useState<EquipoRecord[]>([])
+  const [showEquipmentSug, setShowEquipmentSug] = useState(false)
+  const [selectedEquipoId, setSelectedEquipoId] = useState<string | null>(null)
+  const [historial, setHistorial] = useState<InformeRecord[]>([])
+  const [loadingHistorial, setLoadingHistorial] = useState(false)
+  const [showHistorial, setShowHistorial] = useState(false)
 
   const currentDate = new Date().toLocaleDateString();
   const currentTime = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
@@ -784,9 +835,9 @@ const TechnicalForm = ({ technician, onLogout }: { technician: string; onLogout:
   // Cargar datos guardados al iniciar
   useEffect(() => {
     try {
-      const savedData = localStorage.getItem('ionenergy_form_data');
-      const savedReportNumber = localStorage.getItem('ionenergy_report_number');
-      const savedLogo = localStorage.getItem('ionenergy_logo');
+      const savedData = localStorage.getItem('apptech_form_data');
+      const savedReportNumber = localStorage.getItem('apptech_report_number');
+      const savedLogo = localStorage.getItem('apptech_logo');
       
       if (savedData) setFormData(JSON.parse(savedData));
       if (savedReportNumber) setReportNumber(parseInt(savedReportNumber));
@@ -803,9 +854,9 @@ const TechnicalForm = ({ technician, onLogout }: { technician: string; onLogout:
     saveTimerRef.current = setTimeout(() => {
       try {
         const dataToSave = { ...formData, photos: [] };
-        localStorage.setItem('ionenergy_form_data', JSON.stringify(dataToSave));
-        localStorage.setItem('ionenergy_report_number', String(reportNumber));
-        if (logo) localStorage.setItem('ionenergy_logo', logo);
+        localStorage.setItem('apptech_form_data', JSON.stringify(dataToSave));
+        localStorage.setItem('apptech_report_number', String(reportNumber));
+        if (logo) localStorage.setItem('apptech_logo', logo);
         setSaveStatus('saved');
       } catch (_e) {
         console.warn('Error guardando datos:');
@@ -872,12 +923,81 @@ const TechnicalForm = ({ technician, onLogout }: { technician: string; onLogout:
     setFormData((prev: FormData) => ({ ...prev, selectedServices: services }));
   }, []);
 
-  const companyInfo = {
-    name: "Ion Energy S.A.S",
-    address: "CALLE 73 65-39",
-    phone: "+57 312 4493845",
-    email: "comercial@ionenergy.com.co",
-  };
+  // ── Autocomplete clientes Supabase ────────────────────────
+  const handleClientCompanyChange = useCallback(async (value: string) => {
+    handleFieldChange('clientCompany', value)
+    if (value.length < 2) { setClientSuggestions([]); return }
+    const results = await buscarClientes(value)
+    setClientSuggestions(results)
+    setShowClientSug(results.length > 0)
+  }, [handleFieldChange])
+
+  const selectClient = useCallback((client: ClienteRecord) => {
+    setFormData(prev => ({
+      ...prev,
+      clientCompany: client.company,
+      clientContact: client.contact ?? '',
+      clientAddress: client.address ?? '',
+      clientEmail:   client.email   ?? '',
+      clientCity:    client.city    ?? '',
+      clientPhone:   client.phone   ?? '',
+    }))
+    setShowClientSug(false)
+  }, [])
+
+  // ── Autocomplete equipos Supabase ─────────────────────────
+  const handleEquipmentSerialChange = useCallback(async (value: string) => {
+    handleFieldChange('equipmentSerial', value)
+    if (value.length < 2) { setEquipmentSuggestions([]); return }
+    const results = await buscarEquipos(value)
+    setEquipmentSuggestions(results)
+    setShowEquipmentSug(results.length > 0)
+  }, [handleFieldChange])
+
+  const selectEquipment = useCallback(async (eq: EquipoRecord) => {
+    setFormData(prev => ({
+      ...prev,
+      equipmentBrand:    eq.brand    ?? '',
+      equipmentModel:    eq.model    ?? '',
+      equipmentCapacity: eq.capacity ?? '',
+      equipmentSerial:   eq.serial   ?? '',
+      qrCode:            eq.qr_code  ?? '',
+    }))
+    setShowEquipmentSug(false)
+    setSelectedEquipoId(eq.id)
+
+    if (eq.id) {
+      setLoadingHistorial(true)
+      setShowHistorial(true)
+      const visitas = await listarHistorialEquipo(eq.id)
+      setHistorial(visitas)
+      setLoadingHistorial(false)
+    }
+  }, [])
+
+  const [companyInfo, setCompanyInfo] = useState({
+    name: '',
+    address: '',
+    phone: '',
+    email: '',
+  });
+
+  useEffect(() => {
+    if (!empresaId) return
+    getEmpresaConfig(empresaId).then(config => {
+      if (!config) return
+      setCompanyInfo({
+        name:    config.nombre_comercial ?? '',
+        address: config.direccion        ?? '',
+        phone:   config.telefono         ?? '',
+        email:   config.email_contacto   ?? '',
+      })
+      if (config.logo && !logo) {
+        setLogo(config.logo)
+        localStorage.setItem('apptech_logo', config.logo)
+      }
+    })
+  }, [empresaId]);
 
   const electricalParameters = {
     inputVoltage: [
@@ -923,8 +1043,62 @@ const TechnicalForm = ({ technician, onLogout }: { technician: string; onLogout:
   }, []);
 
 
-  // PDF Generation Function
-  const generatePDF = useCallback(async () => {
+  const emailPhotosRef = useRef<Photo[] | null>(null)
+
+  // PDF Generation Function — returns jsPDF instance
+  const buildPDF = useCallback(async () => {
+    // Generar QR y sincronizar con Supabase
+    let qrDataUrl: string | null = null
+    try {
+      const QRCode = (await import('qrcode')).default
+      const serial   = String(formData.equipmentSerial   ?? '').trim()
+      const brand    = String(formData.equipmentBrand    ?? '').trim()
+      const model    = String(formData.equipmentModel    ?? '').trim()
+      const capacity = String(formData.capacity          ?? '').trim()
+      const location = String(formData.equipmentUbicacion ?? formData.equipmentLocation ?? '').trim()
+      const client   = String(formData.clientCompany     ?? '').trim()
+      const repNum   = String(reportNumber).padStart(4, '0')
+      const fecha    = new Date().toLocaleDateString('es-CO')
+      const qrCodeId = String(formData.qrCode ?? '').trim()
+      const tecnico  = String(formData.technicianName ?? technician).trim()
+
+      const qrText = qrCodeId
+        ? `https://apptech-one.vercel.app/equipo/${encodeURIComponent(qrCodeId)}`
+        : `https://apptech-one.vercel.app/informe?n=${repNum}&fecha=${fecha}&cliente=${encodeURIComponent(client)}`
+
+      qrDataUrl = await QRCode.toDataURL(qrText, {
+        width: 300, margin: 2, errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#ffffff' },
+      })
+
+      // Guardar cliente y equipo en Supabase
+      if (client) {
+        await guardarCliente({
+          company: client,
+          contact: formData.clientContact as string ?? '',
+          address: formData.clientAddress as string ?? '',
+          email:   formData.clientEmail   as string ?? '',
+          city:    formData.clientCity    as string ?? '',
+          phone:   formData.clientPhone   as string ?? '',
+        }).catch(() => {})
+      }
+      if (serial) {
+        await guardarEquipo({
+          brand: brand, model, capacity, serial,
+          qr_code: qrCodeId || undefined,
+        }).catch(() => {})
+      }
+      // Guardar informe
+      await guardarInforme({
+        qr_code: qrCodeId || undefined,
+        numero_informe: repNum,
+        fecha, cliente: client, serial, marca: brand,
+        modelo: model, capacidad: capacity, ubicacion: location, tecnico,
+        equipo_id: selectedEquipoId ?? undefined,
+        tipo_reporte: formData.reportType ?? 'ups',
+      }).catch(() => {})
+    } catch (_e) { /* QR opcional */ }
+
     // Create a new jsPDF instance
     const { jsPDF } = await import('jspdf');
     const pdf = new jsPDF('p', 'mm', 'a4');
@@ -1655,8 +1829,9 @@ yPosition += 8;
       yPosition += 5;
     }
 
-    // Photos Section
-    if (formData.photos && formData.photos.length > 0) {
+    // Photos Section — sin fotos en PDF de correo para reducir tamaño
+    const photosToRender: Photo[] = emailPhotosRef.current ?? (formData.photos ?? [])
+    if (photosToRender.length > 0) {
       // Add section divider
       addSectionDivider();
       
@@ -1673,9 +1848,9 @@ yPosition += 8;
       const descriptionHeight = 10; // Reduced from 15 to 10
       const rowSpacing = 3; // Reduced spacing between rows
 
-      for (let i = 0; i < formData.photos.length; i += 2) {
-        const photo1 = formData.photos[i];
-        const photo2 = formData.photos[i + 1]; // Might be undefined for odd number of photos
+      for (let i = 0; i < photosToRender.length; i += 2) {
+        const photo1 = photosToRender[i];
+        const photo2 = photosToRender[i + 1]; // Might be undefined for odd number of photos
         
         // Nueva página si no hay espacio (considera footer de 15mm)
         if (yPosition + photoHeight + descriptionHeight > pageHeight - margin - 15) {
@@ -1816,8 +1991,115 @@ yPosition += 8;
       addFooter(i, totalPages);
     }
     
-    pdf.save(filename);
+    return { pdf, filename };
   }, [formData, reportNumber, logo, currentDate, currentTime, companyInfo, technician]);
+
+  const generatePDF = useCallback(async () => {
+    const { pdf, filename } = await buildPDF();
+    pdf.save(filename);
+    return filename;
+  }, [buildPDF]);
+
+  const compressImageForEmail = useCallback((dataUrl: string): Promise<string> => {
+    return new Promise(resolve => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 600
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1)
+        const canvas = document.createElement('canvas')
+        canvas.width  = Math.round(img.width  * ratio)
+        canvas.height = Math.round(img.height * ratio)
+        const ctx = canvas.getContext('2d')!
+        ctx.fillStyle = '#fff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.45))
+      }
+      img.onerror = () => resolve(dataUrl)
+      img.src = dataUrl
+    })
+  }, [])
+
+  const handleEmailSend = useCallback(async () => {
+    const target = emailTo.trim() || String(formData.clientEmail ?? '').trim();
+    if (!target) { setShowEmailModal(true); return; }
+    setEmailStatus('sending');
+    setIsLoading(true);
+    try {
+      // Comprimir fotos antes de generar el PDF para correo
+      emailPhotosRef.current = await Promise.all(
+        (formData.photos ?? []).map(async (p: Photo) => ({
+          ...p,
+          url: typeof p.url === 'string' ? await compressImageForEmail(p.url) : p.url,
+        }))
+      )
+      const { pdf, filename } = await buildPDF();
+      emailPhotosRef.current = null;
+      // Convertir PDF a base64 limpio (sin data URI prefix ni saltos de línea)
+      const arrayBuffer = pdf.output('arraybuffer')
+      const bytes = new Uint8Array(arrayBuffer)
+      let binary = ''
+      bytes.forEach(b => { binary += String.fromCharCode(b) })
+      const pdfBase64 = btoa(binary)
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: target,
+          subject: `Reporte Técnico — ${formData.clientCompany ?? companyInfo.name}`,
+          clientName: formData.clientContact ?? formData.clientCompany,
+          technicianName: formData.technicianName ?? technician,
+          companyName: companyInfo.name,
+          date: currentDate,
+          pdfBase64,
+          filename,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setEmailStatus('sent');
+      setShowEmailModal(false);
+      setTimeout(() => setEmailStatus('idle'), 3000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+      console.error('Email error:', msg);
+      setEmailError(msg);
+      setEmailStatus('error');
+      setTimeout(() => setEmailStatus('idle'), 6000);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [buildPDF, emailTo, formData, technician, currentDate]);
+
+  const handleWhatsAppShare = useCallback(async () => {
+    setIsLoading(true);
+    // Abrir ventana sincrónicamente (antes del async) para evitar bloqueo de popup
+    const waWindow = window.open('', '_blank');
+    try {
+      const { pdf, filename } = await buildPDF();
+      pdf.save(filename);
+
+      const qr = String(formData.qrCode ?? '').trim();
+      const link = qr ? `\n🔗 apptech-one.vercel.app/equipo/${qr}` : '';
+      const text =
+        `*Reporte Técnico — ${companyInfo.name}*\n` +
+        `📋 Cliente: ${formData.clientCompany ?? ''}\n` +
+        `🔧 Equipo: ${formData.equipmentBrand ?? ''} ${formData.equipmentModel ?? ''}\n` +
+        `🔑 Serial: ${formData.equipmentSerial ?? ''}\n` +
+        `📅 Fecha: ${currentDate}` +
+        link +
+        `\n\n_El PDF fue descargado en tu dispositivo._`;
+
+      if (waWindow) {
+        waWindow.location.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
+      }
+    } catch (err: unknown) {
+      if (waWindow) waWindow.close();
+      if (err instanceof Error && err.name !== 'AbortError') console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [buildPDF, formData, currentDate]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1827,7 +2109,7 @@ yPosition += 8;
       await generatePDF();
       const nextReport = reportNumber + 1;
       setReportNumber(nextReport);
-      localStorage.setItem('ionenergy_report_number', String(nextReport));
+      localStorage.setItem('apptech_report_number', String(nextReport));
 
       // Conservar datos del cliente y técnico, limpiar solo datos del equipo
       setFormData((prev: FormData) => ({
@@ -1955,18 +2237,57 @@ yPosition += 8;
 
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Selector tipo de reporte */}
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {REPORT_TYPES.map(({ id, label, icon }) => {
+                const active = (formData.reportType ?? 'ups') === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleFieldChange('reportType', id)}
+                    className={`flex flex-col items-center justify-center gap-1 p-3 rounded-xl border-2 text-sm font-medium transition-all
+                      ${active
+                        ? 'border-green-600 bg-green-50 text-green-700 shadow-sm'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50'}`}
+                  >
+                    <span className="text-2xl">{icon}</span>
+                    <span className="text-xs text-center leading-tight">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Client Information */}
             <CollapsibleSection title="Información del Cliente" icon={User} initiallyOpen={true}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="clientCompany">Empresa</Label>
-                    <Input
-                      id="clientCompany"
-                      value={String(formData.clientCompany ?? '')}
-                      onChange={(e) => handleFieldChange('clientCompany', e.target.value)}
-                      placeholder="Nombre de la empresa"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="clientCompany"
+                        value={String(formData.clientCompany ?? '')}
+                        onChange={(e) => handleClientCompanyChange(e.target.value)}
+                        onBlur={() => setTimeout(() => setShowClientSug(false), 150)}
+                        placeholder="Nombre de la empresa"
+                        autoComplete="off"
+                      />
+                      {showClientSug && (
+                        <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
+                          {clientSuggestions.map(c => (
+                            <li
+                              key={c.id}
+                              onMouseDown={() => selectClient(c)}
+                              className="px-3 py-2 cursor-pointer hover:bg-green-50 text-sm"
+                            >
+                              <span className="font-medium">{c.company}</span>
+                              {c.city && <span className="text-gray-400 ml-2 text-xs">— {c.city}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="clientAddress">Dirección</Label>
@@ -2067,37 +2388,118 @@ yPosition += 8;
                     placeholder="Modelo del equipo"
                   />
                 </div>
+                {(!formData.reportType || formData.reportType === 'ups') && (
                 <div className="space-y-2">
-                  <Label htmlFor="capacity">Capacidad (Kva)</Label>
+                  <Label htmlFor="capacity">Capacidad (KVA)</Label>
                   <Input
-                    id="capaciy"
+                    id="capacity"
                     value={String(formData.capacity ?? '')}
                     onChange={(e) => handleFieldChange('capacity', e.target.value)}
                     placeholder="Potencia del equipo"
                   />
                 </div>
+                )}
                 <div className="space-y-2">
-                  <Label htmlFor="equipmentSerial">Serial </Label>
-                  <Input
-                    id="equipmentSerial"
-                    value={String(formData.equipmentSerial ?? '')}
-                    onChange={(e) => handleFieldChange('equipmentSerial', e.target.value)}
-                    placeholder="Número de serie"
-                  />
+                  <Label htmlFor="equipmentSerial">Serial</Label>
+                  <div className="relative">
+                    <Input
+                      id="equipmentSerial"
+                      value={String(formData.equipmentSerial ?? '')}
+                      onChange={(e) => handleEquipmentSerialChange(e.target.value)}
+                      onBlur={() => setTimeout(() => setShowEquipmentSug(false), 150)}
+                      placeholder="Número de serie"
+                      autoComplete="off"
+                    />
+                    {showEquipmentSug && (
+                      <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
+                        {equipmentSuggestions.map(eq => (
+                          <li
+                            key={eq.id}
+                            onMouseDown={() => selectEquipment(eq)}
+                            className="px-3 py-2 cursor-pointer hover:bg-green-50 text-sm"
+                          >
+                            <span className="font-medium">{eq.serial || '(sin serial)'}</span>
+                            <span className="text-gray-500 ml-2">{[eq.brand, eq.model].filter(Boolean).join(' ')}</span>
+                            {eq.client_company && <span className="text-gray-400 ml-2 text-xs">— {eq.client_company}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="equipmentUbicacion">Ubicacion</Label>
+                  <Label htmlFor="equipmentUbicacion">Ubicación</Label>
                   <Input
                     id="equipmentUbicacion"
                     value={String(formData.equipmentUbicacion ?? '')}
                     onChange={(e) => handleFieldChange('equipmentUbicacion', e.target.value)}
-                    placeholder="Ubicacion Equipo"
+                    placeholder="Ubicación del equipo"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="qrCode">Código QR</Label>
+                  <Input
+                    id="qrCode"
+                    value={String(formData.qrCode ?? '')}
+                    onChange={(e) => handleFieldChange('qrCode', e.target.value.toUpperCase())}
+                    placeholder="Ej: QR-001"
                   />
                 </div>
               </div>
             </CollapsibleSection>
-            
-            {/* Electrical Parameters */}
+
+            {/* Historial de visitas del equipo */}
+            {showHistorial && (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/50 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowHistorial(v => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-blue-800"
+                >
+                  <span className="flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Historial de visitas
+                    {!loadingHistorial && <span className="bg-blue-200 text-blue-800 text-xs px-2 py-0.5 rounded-full">{historial.length}</span>}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showHistorial ? 'rotate-180' : ''}`} />
+                </button>
+                <div className="px-4 pb-4">
+                  {loadingHistorial ? (
+                    <p className="text-sm text-blue-500 py-2">Cargando historial…</p>
+                  ) : historial.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-2">Sin visitas previas registradas.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {historial.map((v, i) => (
+                        <div key={v.id ?? i} className="bg-white rounded-xl border border-blue-100 px-4 py-3 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800">
+                              {v.fecha}
+                              {v.tipo_reporte && (
+                                <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">{v.tipo_reporte}</span>
+                              )}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">Técnico: {v.tecnico ?? '—'}</p>
+                            {v.ubicacion && <p className="text-xs text-gray-400 truncate">Ubicación: {v.ubicacion}</p>}
+                          </div>
+                          <span className="text-xs text-gray-400 shrink-0">#{v.numero_informe ?? v.reporte_numero ?? '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Parámetros específicos por tipo */}
+            {formData.reportType === 'aire'         && <AireParams         formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'planta'       && <PlantaParams       formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'fotovoltaico' && <FotovoltaicoParams formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'otros'        && <OtrosParams        formData={formData} onChange={handleFieldChange} />}
+
+            {/* Parámetros Eléctricos — solo UPS */}
+            {(!formData.reportType || formData.reportType === 'ups') && (
+            <>
             <CollapsibleSection title="Parámetros Eléctricos" icon={FileText}>
               <div className="space-y-6">
                 <ElectricalInputGroup
@@ -2127,7 +2529,7 @@ yPosition += 8;
               </div>
             </CollapsibleSection>
 
-            {/* Battery Parameters */}
+            {/* Battery Parameters — solo UPS */}
             <CollapsibleSection title="Parámetros de Baterías" icon={FileText}>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -2234,6 +2636,7 @@ yPosition += 8;
                 </div>
               </div>
             </CollapsibleSection>
+            </>) /* fin bloque UPS */}
 
             {/* Equipment Status */}
             <CollapsibleSection title="Estado del Equipo" icon={Wrench}>
@@ -2389,25 +2792,103 @@ yPosition += 8;
             </CollapsibleSection>
 
             {/* Submit Buttons */}
-            <div className="flex justify-center sm:justify-end mt-6">
-              <Button 
-                type="submit" 
+            <div className="flex flex-col sm:flex-row justify-center items-center gap-3 mt-8">
+              {/* WhatsApp */}
+              <Button
+                type="button"
                 disabled={isLoading}
-                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white min-w-[200px]"
+                onClick={handleWhatsAppShare}
+                className={`w-full sm:w-40 transition-colors duration-200 text-white ${isLoading ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}
               >
                 {isLoading ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Generando...
-                  </div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
                 ) : (
-                  <>
-                    <Download className="w-4 h-4 mr-2" />
-                    Generar Reporte
-                  </>
+                  <MessageCircle className="w-4 h-4 mr-2" />
                 )}
+                WhatsApp
+              </Button>
+
+              {/* Correo */}
+              <Button
+                type="button"
+                disabled={isLoading}
+                onClick={() => {
+                  setEmailTo(String(formData.clientEmail ?? ''));
+                  setShowEmailModal(true);
+                }}
+                className={`w-full sm:w-40 transition-colors duration-200 text-white ${isLoading ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+              >
+                {isLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                ) : (
+                  <Mail className="w-4 h-4 mr-2" />
+                )}
+                Correo
+              </Button>
+
+              {/* Descargar */}
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className={`w-full sm:w-40 transition-colors duration-200 text-white ${isLoading ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+              >
+                {isLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                ) : (
+                  <Download className="w-4 h-4 mr-2" />
+                )}
+                Descargar PDF
               </Button>
             </div>
+
+            {/* Email Modal */}
+            {showEmailModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+                  <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-blue-600" /> Enviar por correo
+                  </h3>
+                  <div className="space-y-1">
+                    <label className="text-sm text-gray-600">Correo del destinatario</label>
+                    <Input
+                      type="email"
+                      value={emailTo}
+                      onChange={e => setEmailTo(e.target.value)}
+                      placeholder="cliente@empresa.com"
+                      autoFocus
+                    />
+                  </div>
+                  {emailStatus === 'error' && (
+                    <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{emailError || 'Error al enviar'}</p>
+                  )}
+                  {emailStatus === 'sent' && (
+                    <p className="text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">✓ Correo enviado correctamente.</p>
+                  )}
+                  <div className="flex gap-3">
+                    <Button
+                      type="button"
+                      onClick={() => setShowEmailModal(false)}
+                      className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={emailStatus === 'sending' || !emailTo.trim()}
+                      onClick={handleEmailSend}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {emailStatus === 'sending' ? (
+                        <div className="flex items-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Enviando…
+                        </div>
+                      ) : 'Enviar'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
         </CardContent>
       </Card>
