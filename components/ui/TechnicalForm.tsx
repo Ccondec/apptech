@@ -2374,11 +2374,13 @@ yPosition += 8;
               setFormData={setFormData}
             />
 
-            {/* Checklist de Actividades */}
-            <ChecklistSection
-              checkedItems={formData.checkedItems || []}
-              onCheckChange={(items) => handleFieldChange('checkedItems', items)}
-            />
+            {/* Checklist de Actividades — solo UPS */}
+            {(!formData.reportType || formData.reportType === 'ups') && (
+              <ChecklistSection
+                checkedItems={formData.checkedItems || []}
+                onCheckChange={(items) => handleFieldChange('checkedItems', items)}
+              />
+            )}
 
             {/* Service Details */}
             <CollapsibleSection title="Detalles del Equipo" icon={Wrench}>
