@@ -1243,7 +1243,9 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     pdf.text('REPORTE TÉCNICO', pageWidth / 2, yPosition + 8, { align: 'center' });
     
     pdf.setFontSize(12);
+    pdf.setTextColor(200, 0, 0); // Rojo
     pdf.text(`N° Reporte: ${fmtReportNum(reportNumber)}`, pageWidth / 2, yPosition + 16, { align: 'center' });
+    pdf.setTextColor(0, 0, 0); // Restaurar negro
     
     pdf.setFontSize(10);
     pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 22, { align: 'center' });
