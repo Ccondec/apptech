@@ -547,20 +547,10 @@ const ServiceInfoSection = ({ formData, onChange, technician }: { formData: Reco
     return h > 0 ? `${h}h ${m}min` : `${m}min`;
   }, [formData.timeStart, formData.timeEnd]);
 
-  const [liveClock, setLiveClock] = React.useState(() => {
+  const nowHHMM = () => {
     const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-  });
-
-  React.useEffect(() => {
-    const id = setInterval(() => {
-      const now = new Date();
-      setLiveClock(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`);
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const nowHHMM = () => liveClock.slice(0, 5);
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  };
 
   return (
     <CollapsibleSection title="Información del Servicio" icon={Clock} initiallyOpen={true}>
@@ -599,18 +589,15 @@ const ServiceInfoSection = ({ formData, onChange, technician }: { formData: Reco
               onChange={(e) => onChange('timeStart', e.target.value)}
               className="flex-1"
             />
-            <div className="flex-shrink-0 flex items-center gap-1 px-2 border rounded-md bg-gray-50 text-xs font-mono text-gray-600">
-              {liveClock}
-              <Clock className="w-3.5 h-3.5 text-gray-400" />
-            </div>
             <button
               type="button"
               onClick={() => onChange('timeStart', nowHHMM())}
               title="Registrar hora actual de entrada"
-              className={`flex-shrink-0 px-3 rounded-md text-xs font-medium text-white transition-colors ${
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3 rounded-md text-xs font-medium text-white transition-colors ${
                 formData.timeStart ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
+              <Clock className="w-3.5 h-3.5" />
               {formData.timeStart ? '✓' : 'Iniciar'}
             </button>
           </div>
@@ -625,18 +612,15 @@ const ServiceInfoSection = ({ formData, onChange, technician }: { formData: Reco
               onChange={(e) => onChange('timeEnd', e.target.value)}
               className="flex-1"
             />
-            <div className="flex-shrink-0 flex items-center gap-1 px-2 border rounded-md bg-gray-50 text-xs font-mono text-gray-600">
-              {liveClock}
-              <Clock className="w-3.5 h-3.5 text-gray-400" />
-            </div>
             <button
               type="button"
               onClick={() => onChange('timeEnd', nowHHMM())}
               title="Registrar hora actual de salida"
-              className={`flex-shrink-0 px-3 rounded-md text-xs font-medium text-white transition-colors ${
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3 rounded-md text-xs font-medium text-white transition-colors ${
                 formData.timeEnd ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
+              <Clock className="w-3.5 h-3.5" />
               {formData.timeEnd ? '✓' : 'Finalizar'}
             </button>
           </div>
