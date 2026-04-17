@@ -843,6 +843,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
   const [historial, setHistorial] = useState<InformeRecord[]>([])
   const [loadingHistorial, setLoadingHistorial] = useState(false)
   const [showHistorial, setShowHistorial] = useState(false)
+  const [historialTab, setHistorialTab] = useState(0)
 
   const currentDate = new Date().toLocaleDateString();
   const currentTime = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
@@ -1000,6 +1001,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       setShowHistorial(true)
       const visitas = await listarHistorialEquipo(eq.id)
       setHistorial(visitas)
+      setHistorialTab(0)
       setLoadingHistorial(false)
     }
   }, [])
@@ -2502,43 +2504,61 @@ yPosition += 8;
                   </span>
                   <ChevronDown className={`w-4 h-4 transition-transform ${showHistorial ? 'rotate-180' : ''}`} />
                 </button>
+
                 <div className="px-4 pb-4">
                   {loadingHistorial ? (
                     <p className="text-sm text-blue-500 py-2">Cargando historial…</p>
                   ) : historial.length === 0 ? (
                     <p className="text-sm text-gray-400 py-2">Sin visitas previas registradas.</p>
                   ) : (
-                    <div className="space-y-2">
-                      {historial.map((v, i) => (
-                        <div key={v.id ?? i} className="bg-white rounded-xl border border-blue-100 px-4 py-3 space-y-1">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-800">
-                                {v.fecha}
-                                {v.tipo_reporte && (
-                                  <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">{v.tipo_reporte}</span>
-                                )}
-                              </p>
-                              <p className="text-xs text-gray-500 truncate">Técnico: {v.tecnico ?? '—'}</p>
-                              {v.ubicacion && <p className="text-xs text-gray-400 truncate">Ubicación: {v.ubicacion}</p>}
+                    <>
+                      {/* Pestañas horizontales */}
+                      <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-hide">
+                        {historial.map((v, i) => (
+                          <button
+                            key={v.id ?? i}
+                            type="button"
+                            onClick={() => setHistorialTab(i)}
+                            className={`flex-shrink-0 px-3 py-1.5 rounded-t-lg text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+                              historialTab === i
+                                ? 'bg-white border-blue-600 text-blue-700'
+                                : 'bg-blue-100/60 border-transparent text-blue-500 hover:bg-white/60'
+                            }`}
+                          >
+                            {v.fecha ?? `Visita ${i + 1}`}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Contenido de la pestaña activa */}
+                      {historial[historialTab] && (() => {
+                        const v = historial[historialTab]
+                        return (
+                          <div className="bg-white rounded-b-xl rounded-tr-xl border border-blue-100 px-4 py-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-blue-700">#{v.numero_informe ?? v.reporte_numero ?? '—'}</span>
+                              {v.tipo_reporte && (
+                                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">{v.tipo_reporte}</span>
+                              )}
                             </div>
-                            <span className="text-xs text-gray-400 shrink-0">#{v.numero_informe ?? v.reporte_numero ?? '—'}</span>
+                            <p className="text-xs text-gray-600">Técnico: <span className="font-medium text-gray-800">{v.tecnico ?? '—'}</span></p>
+                            {v.ubicacion && <p className="text-xs text-gray-500">Ubicación: {v.ubicacion}</p>}
+                            {v.observaciones && (
+                              <div className="pt-2 border-t border-gray-100">
+                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Observaciones</p>
+                                <p className="text-xs text-gray-700 leading-relaxed">{v.observaciones}</p>
+                              </div>
+                            )}
+                            {v.recomendaciones && (
+                              <div>
+                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Recomendaciones</p>
+                                <p className="text-xs text-gray-700 leading-relaxed">{v.recomendaciones}</p>
+                              </div>
+                            )}
                           </div>
-                          {v.observaciones && (
-                            <div className="pt-1 border-t border-gray-50">
-                              <p className="text-xs font-medium text-gray-500">Observaciones</p>
-                              <p className="text-xs text-gray-700">{v.observaciones}</p>
-                            </div>
-                          )}
-                          {v.recomendaciones && (
-                            <div>
-                              <p className="text-xs font-medium text-gray-500">Recomendaciones</p>
-                              <p className="text-xs text-gray-700">{v.recomendaciones}</p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                        )
+                      })()}
+                    </>
                   )}
                 </div>
               </div>
