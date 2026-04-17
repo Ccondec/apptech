@@ -1,6 +1,6 @@
 'use client'
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { supabase, getUsuarioActual, Usuario, Empresa } from './supabase'
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react'
+import { supabase, Usuario, Empresa } from './supabase'
 import type { Session } from '@supabase/supabase-js'
 
 interface AuthUser extends Usuario {
@@ -25,17 +25,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const inflightRef = useRef(false)   // evita queries concurrentes
+  const lastUserIdRef = useRef<string | null>(null) // evita recargar el mismo usuario
 
   async function loadUser(s: Session | null) {
-    if (!s) { setUser(null); setLoading(false); return }
+    if (!s) { setUser(null); setLoading(false); lastUserIdRef.current = null; return }
+
+    // Si ya cargamos este usuario, no repetir
+    if (lastUserIdRef.current === s.user.id && !inflightRef.current) return
+
+    // Si hay una query en vuelo, ignorar este evento (llegará otro cuando termine)
+    if (inflightRef.current) return
+
+    // Si el token ya expiró en INITIAL_SESSION, esperar al TOKEN_REFRESHED
+    const tokenExpired = s.expires_at ? s.expires_at * 1000 < Date.now() : false
+    if (tokenExpired) return
+
+    inflightRef.current = true
     setLoading(true)
-    const { data } = await supabase
+
+    const { data, error } = await supabase
       .from('usuarios')
       .select('*, empresa:empresas(*)')
       .eq('id', s.user.id)
       .single()
-    setUser(data as AuthUser | null)
+
+    if (!error && data) {
+      lastUserIdRef.current = s.user.id
+      setUser(data as AuthUser)
+    } else {
+      setUser(null)
+      lastUserIdRef.current = null
+    }
+
     setLoading(false)
+    inflightRef.current = false
   }
 
   useEffect(() => {
@@ -46,6 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
         setLoading(false)
+        lastUserIdRef.current = null
+        inflightRef.current = false
       }
     })
 
@@ -56,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut()
     setSession(null)
     setUser(null)
+    lastUserIdRef.current = null
   }
 
   return (
