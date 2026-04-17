@@ -999,7 +999,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     if (eq.id) {
       setLoadingHistorial(true)
       setShowHistorial(true)
-      const visitas = await listarHistorialEquipo(eq.id)
+      const visitas = await listarHistorialEquipo(eq.id, eq.qr_code ?? undefined)
       setHistorial(visitas)
       setHistorialTab(0)
       setLoadingHistorial(false)

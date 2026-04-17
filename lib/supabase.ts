@@ -257,13 +257,21 @@ export async function guardarInforme(informe: {
   return { ok: true }
 }
 
-export async function listarHistorialEquipo(equipoId: string): Promise<InformeRecord[]> {
-  const { data } = await supabase
+export async function listarHistorialEquipo(equipoId: string, qrCode?: string): Promise<InformeRecord[]> {
+  let query = supabase
     .from('informes')
     .select('*')
-    .eq('equipo_id', equipoId)
     .order('created_at', { ascending: false })
-    .limit(20)
+    .limit(30)
+
+  if (qrCode) {
+    // Traer por equipo_id O por qr_code para no perder informes viejos
+    query = query.or(`equipo_id.eq.${equipoId},qr_code.eq.${qrCode}`)
+  } else {
+    query = query.eq('equipo_id', equipoId)
+  }
+
+  const { data } = await query
   return data ?? []
 }
 
