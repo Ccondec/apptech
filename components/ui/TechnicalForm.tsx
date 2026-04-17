@@ -1363,26 +1363,26 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       } catch (_e) { console.warn('Could not add logo to PDF') }
     }
 
-    // Title and report info (center)
-    pdf.setFontSize(16);
+    // Title and report info (center) — mismo tamaño que datos empresa
+    pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('REPORTE TÉCNICO', pageWidth / 2, yPosition + 7, { align: 'center' });
+    pdf.text('REPORTE TÉCNICO', pageWidth / 2, yPosition + 5, { align: 'center' });
 
-    pdf.setFontSize(10);
+    pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
     pdf.setTextColor(80, 80, 80);
-    pdf.text(tipoInforme.toUpperCase(), pageWidth / 2, yPosition + 13, { align: 'center' });
-    pdf.setTextColor(0, 0, 0);
-
-    pdf.setFontSize(12);
-    pdf.setTextColor(200, 0, 0);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text(`N° Reporte: ${fmtReportNum(reportNumber)}`, pageWidth / 2, yPosition + 20, { align: 'center' });
+    pdf.text(tipoInforme.toUpperCase(), pageWidth / 2, yPosition + 10, { align: 'center' });
     pdf.setTextColor(0, 0, 0);
 
     pdf.setFontSize(9);
+    pdf.setTextColor(200, 0, 0);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`N° Reporte: ${fmtReportNum(reportNumber)}`, pageWidth / 2, yPosition + 15, { align: 'center' });
+    pdf.setTextColor(0, 0, 0);
+
+    pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
-    pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 26, { align: 'center' });
+    pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 20, { align: 'center' });
 
     // QR code — centrado debajo del título (18×18 mm)
     const qrSize = 18
