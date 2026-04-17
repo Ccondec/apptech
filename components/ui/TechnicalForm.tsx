@@ -11,6 +11,51 @@ type Photo = { id: number; url: string; description: string };
 type MaterialRow = { id: string; item: string; qty: string; ref: string };
 type ReportType = 'ups' | 'aire' | 'planta' | 'fotovoltaico' | 'otros';
 
+// ── IndexedDB: persistencia de fotos ────────────────────────
+const IDB_NAME = 'apptech_db'
+const IDB_STORE = 'photos'
+
+function openPhotoDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1)
+    req.onupgradeneeded = (e) => {
+      const db = (e.target as IDBOpenDBRequest).result
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE, { keyPath: 'key' })
+      }
+    }
+    req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result)
+    req.onerror = () => reject(req.error)
+  })
+}
+async function savePhotosIDB(photos: Photo[]): Promise<void> {
+  const db = await openPhotoDB()
+  const tx = db.transaction(IDB_STORE, 'readwrite')
+  tx.objectStore(IDB_STORE).put({ key: 'current', photos })
+}
+async function loadPhotosIDB(): Promise<Photo[]> {
+  const db = await openPhotoDB()
+  return new Promise(resolve => {
+    const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).get('current')
+    req.onsuccess = () => resolve(req.result?.photos ?? [])
+    req.onerror   = () => resolve([])
+  })
+}
+async function clearPhotosIDB(): Promise<void> {
+  const db = await openPhotoDB()
+  db.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE).delete('current')
+}
+
+// Descarga una foto al dispositivo
+function downloadPhoto(dataUrl: string, index: number) {
+  const a = document.createElement('a')
+  a.href = dataUrl
+  a.download = `foto_${Date.now()}_${index + 1}.jpg`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
 const REPORT_TYPES: { id: ReportType; label: string; icon: string }[] = [
   { id: 'ups',          label: 'UPS / Baterías',       icon: '🔋' },
   { id: 'aire',         label: 'Aires Acondicionados', icon: '❄️' },
@@ -255,109 +300,93 @@ const ElectricalInputGroup = ({ title, fields, values, onChange }: { title: stri
 
 // Optimized Photo handling component
 const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<string, any>; setFormData: React.Dispatch<React.SetStateAction<any>>; isMobile: boolean }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
-  const addPhoto = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  const processAndAddPhoto = useCallback((file: File, fromCamera: boolean) => {
+    if (file.size > 10 * 1024 * 1024) {
+      alert('El archivo es muy grande. Máximo 10MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result;
+      if (!result) return;
+      const img = new Image();
+      img.onload = () => {
+        const MAX_W = 800, MAX_H = 600;
+        const ratio = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const url = canvas.toDataURL('image/jpeg', 0.60);
+        const newPhoto: Photo = { id: Date.now() + Math.random(), url, description: '' };
 
-  if (file.size > 10 * 1024 * 1024) {
-    alert('El archivo es muy grande. Máximo 10MB.');
+        setFormData((prev: Record<string, any>) => {
+          const updated = { ...prev, photos: [...(prev.photos || []), newPhoto] };
+          savePhotosIDB(updated.photos).catch(() => {});
+          return updated;
+        });
+
+        // Descarga automática si vino de la cámara
+        if (fromCamera) downloadPhoto(url, (formData.photos?.length ?? 0));
+      };
+      img.onerror = () => alert('No se pudo cargar la imagen.');
+      img.src = typeof result === 'string' ? result : '';
+    };
+    reader.readAsDataURL(file);
+  }, [setFormData, formData.photos]);
+
+  const handleCamera  = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (file) processAndAddPhoto(file, true);
     e.target.value = '';
-    return;
-  }
+  }, [processAndAddPhoto]);
 
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const result = event.target?.result;
-    if (!result) return;
+  const handleGallery = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (file) processAndAddPhoto(file, false);
+    e.target.value = '';
+  }, [processAndAddPhoto]);
 
-    const img = new Image();
-    img.onload = () => {
-      const MAX_WIDTH = 800;
-      const MAX_HEIGHT = 600;
-      
-      let width = img.width;
-      let height = img.height;
-
-      if (width > MAX_WIDTH || height > MAX_HEIGHT) {
-        const ratio = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0, width, height);
-
-      const normalizedUrl = canvas.toDataURL('image/jpeg', 0.60);
-
-      setFormData((prev: Record<string, any>) => ({
-        ...prev,
-        photos: [...(prev.photos || []), {
-          id: Date.now() + Math.random(),
-          url: normalizedUrl,
-          description: ''
-        }]
-      }));
-    };
-
-    img.onerror = () => {
-      alert('No se pudo cargar la imagen.');
-    };
-
-    img.src = typeof result === 'string' ? result : '';
-  };
-
-  reader.readAsDataURL(file);
-  e.target.value = '';
-}, [setFormData]);
-
-const removePhoto = useCallback((photoId: number) => {
-  setFormData((prev: Record<string, any>) => ({
-    ...prev,
-    photos: (prev.photos || []).filter((p: any) => p.id !== photoId)
-  }));
-}, [setFormData]);
-  
-  const updatePhotoDescription = useCallback((photoId: number, description: string) => {
-    setFormData((prev: Record<string, any>) => ({
-      ...prev,
-      photos: prev.photos?.map((p: any) =>
-        p.id === photoId ? { ...p, description } : p
-      ) || []
-    }));
+  const removePhoto = useCallback((photoId: number) => {
+    setFormData((prev: Record<string, any>) => {
+      const photos = (prev.photos || []).filter((p: any) => p.id !== photoId);
+      savePhotosIDB(photos).catch(() => {});
+      return { ...prev, photos };
+    });
   }, [setFormData]);
 
-  const triggerFileInput = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-  
+  const updatePhotoDescription = useCallback((photoId: number, description: string) => {
+    setFormData((prev: Record<string, any>) => {
+      const photos = prev.photos?.map((p: any) => p.id === photoId ? { ...p, description } : p) || [];
+      savePhotosIDB(photos).catch(() => {});
+      return { ...prev, photos };
+    });
+  }, [setFormData]);
+
   const content = (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <Button 
-          type="button"
-          onClick={triggerFileInput}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          <Camera className="w-4 h-4 mr-2" />
-          Tomar Foto
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button type="button" onClick={() => cameraInputRef.current?.click()}
+          className="bg-blue-600 hover:bg-blue-700 text-white">
+          <Camera className="w-4 h-4 mr-2" /> Cámara
         </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={addPhoto}
-        />
+        <Button type="button" onClick={() => galleryInputRef.current?.click()}
+          className="bg-gray-600 hover:bg-gray-700 text-white">
+          <Camera className="w-4 h-4 mr-2" /> Galería
+        </Button>
+        {/* Cámara — descarga automática al tomar */}
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment"
+          className="hidden" onChange={handleCamera} />
+        {/* Galería — sin auto-descarga */}
+        <input ref={galleryInputRef} type="file" accept="image/*"
+          className="hidden" onChange={handleGallery} />
+        {(formData.photos?.length > 0) && (
+          <span className="text-xs text-gray-400">{formData.photos.length} foto(s)</span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -366,38 +395,38 @@ const removePhoto = useCallback((photoId: number) => {
             <div className="relative">
               {typeof photo.url === 'string' ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={photo.url}
-                  alt={`Foto ${index + 1}`}
-                  className="w-full h-48 object-cover rounded-lg"
-                  loading="lazy"
-                />
+                <img src={photo.url} alt={`Foto ${index + 1}`}
+                  className="w-full h-48 object-cover rounded-lg" loading="lazy" />
               ) : (
                 <div className="w-full h-48 bg-gray-200 rounded-lg flex items-center justify-center">
                   <span>Imagen no disponible</span>
                 </div>
               )}
-              <button
-                type="button"
-                className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                onClick={() => removePhoto(photo.id)}
-              >
+              {/* Botón eliminar */}
+              <button type="button"
+                className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                onClick={() => removePhoto(photo.id)}>
                 <X className="w-4 h-4" />
               </button>
+              {/* Botón descargar */}
+              <button type="button"
+                className="absolute top-2 right-10 p-1 bg-green-600 text-white rounded-full hover:bg-green-700"
+                title="Guardar en dispositivo"
+                onClick={() => downloadPhoto(photo.url, index)}>
+                ⬇
+              </button>
             </div>
-            <textarea
-              placeholder="Descripción de la foto..."
+            <textarea placeholder="Descripción de la foto..."
               className="w-full p-2 text-sm border rounded-md resize-none"
               value={photo.description}
               onChange={(e) => updatePhotoDescription(photo.id, e.target.value)}
-              rows={2}
-            />
+              rows={2} />
           </div>
         ))}
       </div>
     </div>
   );
-  
+
   if (isMobile) {
     return (
       <CollapsibleSection title="Registro Fotográfico" icon={Camera}>
@@ -857,13 +886,19 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       const savedData = localStorage.getItem('apptech_form_data');
       const savedReportNumber = localStorage.getItem('apptech_report_number');
       const savedLogo = localStorage.getItem('apptech_logo');
-      
+
       if (savedData) setFormData(JSON.parse(savedData));
       if (savedReportNumber) setReportNumber(parseInt(savedReportNumber));
       if (savedLogo) setLogo(savedLogo);
     } catch (_e) {
       console.warn('Error cargando datos guardados:');
     }
+    // Cargar fotos desde IndexedDB
+    loadPhotosIDB().then(photos => {
+      if (photos.length > 0) {
+        setFormData((prev: any) => ({ ...prev, photos }));
+      }
+    }).catch(() => {});
   }, []);
 
   // Guardar automáticamente sin causar re-renders (usando ref para el timer)
@@ -2206,6 +2241,7 @@ yPosition += 8;
       setHistorial([])
       setHistorialTab(0)
       setSelectedEquipoId(null)
+      clearPhotosIDB().catch(() => {})
 
       alert('Reporte generado exitosamente.');
     } catch (error) {
