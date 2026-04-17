@@ -1,75 +1,76 @@
-"use client"
-import React, { useState } from 'react';
-import Login from '@/components/ui/login';
-import TechnicalForm from '@/components/ui/TechnicalForm';
-import { Button } from '@/components/ui/button';
-import { LogOut, User } from 'lucide-react';
+'use client'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth-context'
+import TechnicalForm from '@/components/ui/TechnicalForm'
+import { Button } from '@/components/ui/button'
+import { LogOut, User, ShieldCheck, Zap } from 'lucide-react'
 
-interface UserData {
-  email: string;
-  name: string;
-  role: string;
-}
+export default function HomePage() {
+  const { user, loading, signOut } = useAuth()
+  const router = useRouter()
 
-const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<UserData | null>(null);
+  useEffect(() => {
+    if (!loading && !user) router.push('/login')
+  }, [loading, user, router])
 
-  const handleLogin = ({ email, role }: { email: string; password: string; role?: string }) => {
-    setCurrentUser({
-      email,
-      name: role || email.split('@')[0],
-      role: role || 'Usuario'
-    });
-    setIsAuthenticated(true);
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-  };
-
-  const handleForgotPassword = () => {
-    alert('Función de recuperación de contraseña en desarrollo');
-  };
-
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} onForgotPassword={handleForgotPassword} />;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 border-4 border-green-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-gray-500 text-sm">Cargando…</p>
+        </div>
+      </div>
+    )
   }
+
+  if (!user) return null
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-2 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white">
-                <User className="w-5 h-5" />
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white">
+                <Zap className="w-4 h-4" />
               </div>
-              <div>
-                <p className="font-medium">{currentUser?.name}</p>
-                <p className="text-xs text-gray-500">{currentUser?.role}</p>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white">
+                  <User className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="font-medium text-sm">{user.nombre}</p>
+                  <p className="text-xs text-gray-500">{user.empresa?.nombre} · {user.rol}</p>
+                </div>
               </div>
             </div>
-            <Button
-              onClick={handleLogout}
-              className="flex items-center gap-2 bg-green-600 hover:bg-red-600 text-white"
-            >
-              <LogOut className="w-4 h-4" />
-              Cerrar Sesión
-            </Button>
+            <div className="flex items-center gap-2">
+              {user.rol === 'admin' && (
+                <Button
+                  onClick={() => router.push('/admin')}
+                  className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 text-white"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  Admin
+                </Button>
+              )}
+              <Button
+                onClick={signOut}
+                className="flex items-center gap-2 bg-green-600 hover:bg-red-600 text-white"
+              >
+                <LogOut className="w-4 h-4" />
+                Cerrar sesión
+              </Button>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="py-6">
-        <TechnicalForm
-          technician={currentUser?.name ?? ''}
-          onLogout={handleLogout}
-        />
+        <TechnicalForm technician={user.nombre} empresaId={user.empresa_id} />
       </main>
     </div>
-  );
-};
-
-export default App;
+  )
+}
