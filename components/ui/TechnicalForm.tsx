@@ -372,16 +372,11 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
       <div className="flex items-center gap-3 flex-wrap">
         <Button type="button" onClick={() => cameraInputRef.current?.click()}
           className="bg-blue-600 hover:bg-blue-700 text-white">
-          <Camera className="w-4 h-4 mr-2" /> Cámara
+          <Camera className="w-4 h-4 mr-2" /> Tomar Foto
         </Button>
-        <Button type="button" onClick={() => galleryInputRef.current?.click()}
-          className="bg-gray-600 hover:bg-gray-700 text-white">
-          <Camera className="w-4 h-4 mr-2" /> Galería
-        </Button>
-        {/* Cámara — descarga automática al tomar */}
+        {/* Cámara — descarga automática al tomar en móvil */}
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment"
           className="hidden" onChange={handleCamera} />
-        {/* Galería — sin auto-descarga */}
         <input ref={galleryInputRef} type="file" accept="image/*"
           className="hidden" onChange={handleGallery} />
         {(formData.photos?.length > 0) && (
