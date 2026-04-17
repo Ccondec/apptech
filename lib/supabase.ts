@@ -275,6 +275,22 @@ export async function listarHistorialEquipo(equipoId: string, qrCode?: string): 
   return data ?? []
 }
 
+// ── Storage: subir PDF de reporte ────────────────────────────
+
+export async function uploadReportePdf(
+  arrayBuffer: ArrayBuffer,
+  empresaId: string,
+  filename: string
+): Promise<string | null> {
+  const path = `${empresaId}/${filename}`
+  const { error } = await supabase.storage
+    .from('reportes')
+    .upload(path, arrayBuffer, { contentType: 'application/pdf', upsert: true })
+  if (error) { console.error('Storage upload error:', error.message); return null }
+  const { data } = supabase.storage.from('reportes').getPublicUrl(path)
+  return data.publicUrl
+}
+
 // ── Configuración de empresa ──────────────────────────────────
 
 export async function getEmpresaConfig(empresaId: string): Promise<EmpresaConfig | null> {

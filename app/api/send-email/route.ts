@@ -6,9 +6,9 @@ export async function POST(req: NextRequest) {
   if (!apiKey) return NextResponse.json({ error: 'Servicio de correo no configurado' }, { status: 503 })
   const resend = new Resend(apiKey)
   try {
-    const { to, subject, clientName, technicianName, date, pdfBase64, filename, companyName } = await req.json()
+    const { to, subject, clientName, technicianName, date, pdfBase64, pdfUrl, filename, companyName } = await req.json()
 
-    if (!to || !pdfBase64) {
+    if (!to || (!pdfBase64 && !pdfUrl)) {
       return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 })
     }
 
@@ -17,11 +17,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Correo destinatario inválido' }, { status: 400 })
     }
 
+    // Obtener contenido del PDF: desde URL (Storage) o desde base64
+    let pdfBuffer: Buffer
+    if (pdfUrl) {
+      const response = await fetch(pdfUrl)
+      if (!response.ok) return NextResponse.json({ error: 'No se pudo obtener el PDF' }, { status: 500 })
+      pdfBuffer = Buffer.from(await response.arrayBuffer())
+    } else {
+      pdfBuffer = Buffer.from(pdfBase64, 'base64')
+    }
+
     const { data, error } = await resend.emails.send({
       from: process.env.RESEND_FROM ?? 'Ion Energy <comercial@ionenergy.com.co>',
       to: [to],
       subject: subject ?? 'Reporte Técnico',
-      attachments: pdfBase64 ? [{ filename: filename ?? 'reporte_tecnico.pdf', content: Buffer.from(pdfBase64, 'base64'), contentType: 'application/pdf' }] : undefined,
+      attachments: [{ filename: filename ?? 'reporte_tecnico.pdf', content: pdfBuffer, contentType: 'application/pdf' }],
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: #16a34a; padding: 24px; border-radius: 8px 8px 0 0;">

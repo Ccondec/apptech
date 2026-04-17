@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
-import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, getEmpresaConfig, listarHistorialEquipo, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
+import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
 import AireParams from './AireParams'
 import PlantaParams from './PlantaParams'
 import FotovoltaicoParams from './FotovoltaicoParams'
@@ -2074,12 +2074,26 @@ yPosition += 8;
       )
       const { pdf, filename } = await buildPDF();
       emailPhotosRef.current = null;
-      // Convertir PDF a base64 limpio (sin data URI prefix ni saltos de línea)
       const arrayBuffer = pdf.output('arraybuffer')
-      const bytes = new Uint8Array(arrayBuffer)
-      let binary = ''
-      bytes.forEach(b => { binary += String.fromCharCode(b) })
-      const pdfBase64 = btoa(binary)
+
+      // Subir PDF a Supabase Storage y usar URL (evita límite de 4.5 MB de Vercel)
+      const pdfUrl = empresaId
+        ? await uploadReportePdf(arrayBuffer, empresaId, filename)
+        : null
+
+      // Fallback a base64 solo si el PDF es pequeño (<3 MB) y no se pudo subir
+      let pdfBase64: string | undefined
+      if (!pdfUrl && arrayBuffer.byteLength < 3_000_000) {
+        const bytes = new Uint8Array(arrayBuffer)
+        let binary = ''
+        bytes.forEach(b => { binary += String.fromCharCode(b) })
+        pdfBase64 = btoa(binary)
+      }
+
+      if (!pdfUrl && !pdfBase64) {
+        throw new Error('El PDF es demasiado grande. Reduce la cantidad de fotos e intenta de nuevo.')
+      }
+
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2090,6 +2104,7 @@ yPosition += 8;
           technicianName: formData.technicianName ?? technician,
           companyName: companyInfo.name,
           date: currentDate,
+          pdfUrl,
           pdfBase64,
           filename,
         }),
