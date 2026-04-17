@@ -332,8 +332,8 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
           return updated;
         });
 
-        // Descarga automática si vino de la cámara
-        if (fromCamera) downloadPhoto(url, (formData.photos?.length ?? 0));
+        // Descarga automática solo en móvil/tablet (en desktop no aplica)
+        if (fromCamera && isMobile) downloadPhoto(url, (formData.photos?.length ?? 0));
       };
       img.onerror = () => alert('No se pudo cargar la imagen.');
       img.src = typeof result === 'string' ? result : '';
