@@ -49,40 +49,55 @@ export default function HistorialTabs({ informes }: { informes: Informe[] }) {
 
       {/* Contenido de la pestaña activa */}
       {v && (
-        <div className="bg-white rounded-b-2xl rounded-tr-2xl border border-gray-100 shadow-sm px-5 py-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-              N° {v.numero_informe ?? v.reporte_numero ?? '—'}
-            </span>
-            {v.tipo_reporte && (
-              <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">
-                {v.tipo_reporte}
+        <div className="bg-white rounded-b-2xl rounded-tr-2xl border border-gray-100 shadow-sm px-5 py-4">
+          {/* Datos principales en 2 columnas */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3">
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Informe</p>
+              <span className="text-xs font-bold text-green-700">
+                N° {v.numero_informe ?? v.reporte_numero ?? '—'}
               </span>
+            </div>
+            {v.tipo_reporte && (
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide">Tipo</p>
+                <p className="text-xs font-medium text-gray-700 capitalize">{v.tipo_reporte}</p>
+              </div>
+            )}
+            {v.tecnico && (
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide">Técnico</p>
+                <p className="text-xs font-medium text-gray-800">{v.tecnico}</p>
+              </div>
+            )}
+            {v.ubicacion && (
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide">Ubicación</p>
+                <p className="text-xs text-gray-700 truncate">{v.ubicacion}</p>
+              </div>
             )}
           </div>
 
-          {v.tecnico && (
-            <p className="text-xs text-gray-500 flex items-center gap-1">
-              Técnico: <span className="font-medium text-gray-700">{v.tecnico}</span>
-            </p>
-          )}
-          {v.ubicacion && (
-            <p className="text-xs text-gray-400">Ubicación: {v.ubicacion}</p>
-          )}
-          {v.observaciones && (
-            <div className="pt-2 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-500 mb-0.5">Observaciones</p>
-              <p className="text-xs text-gray-700 leading-relaxed">{v.observaciones}</p>
+          {/* Observaciones y Recomendaciones en 2 columnas */}
+          {(v.observaciones || v.recomendaciones) && (
+            <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+              {v.observaciones && (
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Observaciones</p>
+                  <p className="text-xs text-gray-700 leading-relaxed">{v.observaciones}</p>
+                </div>
+              )}
+              {v.recomendaciones && (
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Recomendaciones</p>
+                  <p className="text-xs text-gray-700 leading-relaxed">{v.recomendaciones}</p>
+                </div>
+              )}
             </div>
           )}
-          {v.recomendaciones && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 mb-0.5">Recomendaciones</p>
-              <p className="text-xs text-gray-700 leading-relaxed">{v.recomendaciones}</p>
-            </div>
-          )}
+
           {tab === 0 && (
-            <span className="inline-block mt-1 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+            <span className="inline-block mt-3 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
               Último servicio
             </span>
           )}

@@ -2534,25 +2534,45 @@ yPosition += 8;
                       {historial[historialTab] && (() => {
                         const v = historial[historialTab]
                         return (
-                          <div className="bg-white rounded-b-xl rounded-tr-xl border border-blue-100 px-4 py-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-blue-700">#{v.numero_informe ?? v.reporte_numero ?? '—'}</span>
+                          <div className="bg-white rounded-b-xl rounded-tr-xl border border-blue-100 px-4 py-3">
+                            {/* Fila superior: info en 2 columnas */}
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
+                              <div>
+                                <p className="text-[10px] text-gray-400 uppercase tracking-wide">Informe</p>
+                                <p className="text-xs font-bold text-blue-700">#{v.numero_informe ?? v.reporte_numero ?? '—'}</p>
+                              </div>
                               {v.tipo_reporte && (
-                                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">{v.tipo_reporte}</span>
+                                <div>
+                                  <p className="text-[10px] text-gray-400 uppercase tracking-wide">Tipo</p>
+                                  <p className="text-xs font-medium text-gray-700 capitalize">{v.tipo_reporte}</p>
+                                </div>
+                              )}
+                              <div>
+                                <p className="text-[10px] text-gray-400 uppercase tracking-wide">Técnico</p>
+                                <p className="text-xs font-medium text-gray-800">{v.tecnico ?? '—'}</p>
+                              </div>
+                              {v.ubicacion && (
+                                <div>
+                                  <p className="text-[10px] text-gray-400 uppercase tracking-wide">Ubicación</p>
+                                  <p className="text-xs text-gray-700 truncate">{v.ubicacion}</p>
+                                </div>
                               )}
                             </div>
-                            <p className="text-xs text-gray-600">Técnico: <span className="font-medium text-gray-800">{v.tecnico ?? '—'}</span></p>
-                            {v.ubicacion && <p className="text-xs text-gray-500">Ubicación: {v.ubicacion}</p>}
-                            {v.observaciones && (
-                              <div className="pt-2 border-t border-gray-100">
-                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Observaciones</p>
-                                <p className="text-xs text-gray-700 leading-relaxed">{v.observaciones}</p>
-                              </div>
-                            )}
-                            {v.recomendaciones && (
-                              <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-0.5">Recomendaciones</p>
-                                <p className="text-xs text-gray-700 leading-relaxed">{v.recomendaciones}</p>
+                            {/* Observaciones y Recomendaciones full-width */}
+                            {(v.observaciones || v.recomendaciones) && (
+                              <div className="border-t border-gray-100 pt-2 grid grid-cols-2 gap-x-4 gap-y-2">
+                                {v.observaciones && (
+                                  <div>
+                                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Observaciones</p>
+                                    <p className="text-xs text-gray-700 leading-relaxed">{v.observaciones}</p>
+                                  </div>
+                                )}
+                                {v.recomendaciones && (
+                                  <div>
+                                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Recomendaciones</p>
+                                    <p className="text-xs text-gray-700 leading-relaxed">{v.recomendaciones}</p>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
