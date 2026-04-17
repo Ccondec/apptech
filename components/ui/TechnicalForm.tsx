@@ -1099,26 +1099,29 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
           email:   formData.clientEmail   as string ?? '',
           city:    formData.clientCity    as string ?? '',
           phone:   formData.clientPhone   as string ?? '',
-        }).catch(() => null)
+        }).catch((e) => { console.error('guardarCliente error:', e); return null })
         savedClientId = savedClient?.id
+        console.log('Cliente guardado:', savedClient)
       }
       if (brand || model || serial) {
-        await guardarEquipo({
+        const savedEquipo = await guardarEquipo({
           brand, model, capacity,
           serial: serial || `${brand}-${model}-${Date.now()}`,
           qr_code: qrCodeId || undefined,
           client_id: savedClientId,
-        }).catch(() => {})
+        }).catch((e) => { console.error('guardarEquipo error:', e); return null })
+        console.log('Equipo guardado:', savedEquipo)
       }
       // Guardar informe
-      await guardarInforme({
+      const savedInforme = await guardarInforme({
         qr_code: qrCodeId || undefined,
         numero_informe: repNum,
         fecha, cliente: client, serial, marca: brand,
         modelo: model, capacidad: capacity, ubicacion: location, tecnico,
         equipo_id: selectedEquipoId ?? undefined,
         tipo_reporte: formData.reportType ?? 'ups',
-      }).catch(() => {})
+      }).catch((e) => { console.error('guardarInforme error:', e); return { ok: false, error: String(e) } })
+      console.log('Informe guardado:', savedInforme)
     } catch (_e) { /* QR opcional */ }
 
     // Create a new jsPDF instance
