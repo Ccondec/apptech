@@ -1385,7 +1385,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 20, { align: 'center' });
 
     // Company info (derecha, con espacio para QR a su derecha)
-    const qrSize = 16
+    const qrSize = 18
     const companyX = pageWidth - margin - qrSize - 3
     pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
