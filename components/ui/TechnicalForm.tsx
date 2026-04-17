@@ -99,8 +99,8 @@ const DraggablePhoto = ({ photo, onPositionChange }: {
   )
 }
 
-// Recorta imagen con lógica object-cover + posición del usuario, para PDF
-function cropForPdf(url: string, posX: number, posY: number, targetW: number, targetH: number): Promise<string> {
+// Recorta imagen con lógica object-cover + posición + zoom del usuario, para PDF
+function cropForPdf(url: string, posX: number, posY: number, targetW: number, targetH: number, zoom = 1): Promise<string> {
   return new Promise(resolve => {
     const img = new Image()
     img.onload = () => {
@@ -108,8 +108,8 @@ function cropForPdf(url: string, posX: number, posY: number, targetW: number, ta
       canvas.width  = targetW
       canvas.height = targetH
       const ctx = canvas.getContext('2d')!
-      // object-cover: escalar para cubrir el área manteniendo proporción
-      const scale = Math.max(targetW / img.width, targetH / img.height)
+      // object-cover: escalar para cubrir el área + zoom adicional
+      const scale = Math.max(targetW / img.width, targetH / img.height) * zoom
       const sw = img.width  * scale
       const sh = img.height * scale
       // offset según posición del usuario (posX/posY en %)
@@ -123,6 +123,89 @@ function cropForPdf(url: string, posX: number, posY: number, targetW: number, ta
     img.onerror = () => resolve(url)
     img.src = url
   })
+}
+
+// Logo con arrastre y zoom para reposicionar dentro del recuadro
+const DraggableLogo = ({ src, posX, posY, zoom, onPositionChange, onZoomChange, onRemove }: {
+  src: string
+  posX: number
+  posY: number
+  zoom: number
+  onPositionChange: (x: number, y: number) => void
+  onZoomChange: (z: number) => void
+  onRemove: () => void
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+  const lastPos  = useRef({ x: 0, y: 0 })
+  const pinchStartDist = useRef<number | null>(null)
+  const pinchStartZoom = useRef(zoom)
+
+  const startDrag = (clientX: number, clientY: number) => {
+    dragging.current = true
+    lastPos.current  = { x: clientX, y: clientY }
+  }
+  const moveDrag = (clientX: number, clientY: number) => {
+    if (!dragging.current || !containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const dx = ((lastPos.current.x - clientX) / rect.width)  * 100
+    const dy = ((lastPos.current.y - clientY) / rect.height) * 100
+    lastPos.current = { x: clientX, y: clientY }
+    onPositionChange(Math.min(100, Math.max(0, posX + dx)), Math.min(100, Math.max(0, posY + dy)))
+  }
+  const endDrag = () => { dragging.current = false }
+
+  const getDist = (touches: React.TouchList) => {
+    const dx = touches[0].clientX - touches[1].clientX
+    const dy = touches[0].clientY - touches[1].clientY
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-full overflow-hidden rounded-lg cursor-grab active:cursor-grabbing select-none relative"
+      onMouseDown={e => { e.preventDefault(); startDrag(e.clientX, e.clientY) }}
+      onMouseMove={e => moveDrag(e.clientX, e.clientY)}
+      onMouseUp={endDrag} onMouseLeave={endDrag}
+      onWheel={e => { e.preventDefault(); onZoomChange(Math.min(4, Math.max(1, zoom + (e.deltaY > 0 ? -0.1 : 0.1)))) }}
+      onTouchStart={e => {
+        if (e.touches.length === 2) {
+          pinchStartDist.current = getDist(e.touches)
+          pinchStartZoom.current = zoom
+          dragging.current = false
+        } else { startDrag(e.touches[0].clientX, e.touches[0].clientY) }
+      }}
+      onTouchMove={e => {
+        e.preventDefault()
+        if (e.touches.length === 2 && pinchStartDist.current !== null) {
+          onZoomChange(Math.min(4, Math.max(1, pinchStartZoom.current * (getDist(e.touches) / pinchStartDist.current))))
+        } else if (e.touches.length === 1) {
+          moveDrag(e.touches[0].clientX, e.touches[0].clientY)
+        }
+      }}
+      onTouchEnd={() => { endDrag(); pinchStartDist.current = null }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt="Company Logo"
+        draggable={false}
+        className="w-full h-full object-cover pointer-events-none"
+        style={{ objectPosition: `${posX}% ${posY}%`, transform: `scale(${zoom})`, transformOrigin: `${posX}% ${posY}%` }}
+      />
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); onRemove() }}
+        className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500 transition-colors z-10"
+      >
+        <X className="w-3 h-3" />
+      </button>
+      <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[9px] bg-black/40 text-white px-2 py-0.5 rounded-full pointer-events-none whitespace-nowrap">
+        ✋ Arrastra · 🔍 Zoom
+      </span>
+    </div>
+  )
 }
 
 // Descarga una foto al dispositivo
@@ -934,6 +1017,9 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
   const [reportNumber, setReportNumber] = useState(1);
   const [isEditingReportNumber, setIsEditingReportNumber] = useState(false);
   const [logo, setLogo] = useState<string | null>(null);
+  const [logoPosX, setLogoPosX] = useState(50);
+  const [logoPosY, setLogoPosY] = useState(50);
+  const [logoZoom, setLogoZoom] = useState(1);
   const [isMobile, setIsMobile] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved'
@@ -970,6 +1056,12 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       if (savedData) setFormData(JSON.parse(savedData));
       if (savedReportNumber) setReportNumber(parseInt(savedReportNumber));
       if (savedLogo) setLogo(savedLogo);
+      const savedPosX = localStorage.getItem('apptech_logo_posX')
+      const savedPosY = localStorage.getItem('apptech_logo_posY')
+      const savedZoom = localStorage.getItem('apptech_logo_zoom')
+      if (savedPosX) setLogoPosX(parseFloat(savedPosX))
+      if (savedPosY) setLogoPosY(parseFloat(savedPosY))
+      if (savedZoom) setLogoZoom(parseFloat(savedZoom))
     } catch (_e) {
       console.warn('Error cargando datos guardados:');
     }
@@ -991,6 +1083,9 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
         localStorage.setItem('apptech_form_data', JSON.stringify(dataToSave));
         localStorage.setItem('apptech_report_number', String(reportNumber));
         if (logo) localStorage.setItem('apptech_logo', logo);
+        localStorage.setItem('apptech_logo_posX', String(logoPosX))
+        localStorage.setItem('apptech_logo_posY', String(logoPosY))
+        localStorage.setItem('apptech_logo_zoom', String(logoZoom))
         setSaveStatus('saved');
       } catch (_e) {
         console.warn('Error guardando datos:');
@@ -1000,7 +1095,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [formData, reportNumber, logo]);
+  }, [formData, reportNumber, logo, logoPosX, logoPosY, logoZoom]);
 
   // Optimized mobile detection with proper cleanup
   useEffect(() => {
@@ -1355,11 +1450,12 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     }
     const tipoInforme = tipoLabel[formData.reportType as string] ?? 'UPS / Baterías'
 
-    // Logo (izquierda) — 40×20 mm
+    // Logo (izquierda) — 40×20 mm (151×76 px para canvas)
     const logoW = 40, logoH = 20
     if (logo) {
       try {
-        pdf.addImage(logo, 'JPEG', margin, yPosition, logoW, logoH);
+        const croppedLogo = await cropForPdf(logo, logoPosX, logoPosY, 151, 76, logoZoom)
+        pdf.addImage(croppedLogo, 'JPEG', margin, yPosition, logoW, logoH)
       } catch (_e) { console.warn('Could not add logo to PDF') }
     }
 
@@ -2377,31 +2473,24 @@ yPosition += 8;
             {/* Logo section */}
             <div className="relative order-2 sm:order-1">
               {logo ? (
-                <div className="w-32 h-20 sm:w-40 sm:h-24 relative group mx-auto sm:mx-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                <div className="w-32 h-20 sm:w-40 sm:h-24 mx-auto sm:mx-0">
+                  <DraggableLogo
                     src={logo}
-                    alt="Company Logo"
-                    className="w-full h-full object-contain"
+                    posX={logoPosX}
+                    posY={logoPosY}
+                    zoom={logoZoom}
+                    onPositionChange={(x, y) => { setLogoPosX(x); setLogoPosY(y) }}
+                    onZoomChange={z => setLogoZoom(z)}
+                    onRemove={() => { setLogo(null); setLogoPosX(50); setLogoPosY(50); setLogoZoom(1) }}
                   />
-                  <div className="absolute inset-0 bg-black bg-opacity-50 hidden group-hover:flex items-center justify-center">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="text-white p-1"
-                      onClick={() => setLogo(null)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
                 </div>
               ) : (
-                <div 
-                  className="w-32 h-24 bg-gray-200 flex flex-col items-center justify-center rounded cursor-pointer hover:bg-gray-300 mx-auto sm:mx-0 transition-colors"
+                <div
+                  className="w-32 h-20 sm:w-40 sm:h-24 bg-gray-200 flex flex-col items-center justify-center rounded cursor-pointer hover:bg-gray-300 mx-auto sm:mx-0 transition-colors"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <span className="text-gray-500 font-bold text-sm">LOGO</span>
-                  <span className="text-gray-500 text-xs">Click para cambiar</span>
+                  <span className="text-gray-500 text-xs">Click para cargar</span>
                 </div>
               )}
               <input
