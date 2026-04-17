@@ -1131,8 +1131,8 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
         equipo_id: selectedEquipoId ?? undefined,
         tipo_reporte: formData.reportType ?? 'ups',
         empresa_id: empresaId,
-        observaciones:   String(formData.workDescription  ?? '').trim() || undefined,
-        recomendaciones: String(formData.recommendations  ?? '').trim() || undefined,
+        observaciones:   String(formData.description    ?? '').trim() || undefined,
+        recomendaciones: String(formData.recommendations ?? '').trim() || undefined,
       }).catch(() => {})
     } catch (_e) { /* QR opcional */ }
 
