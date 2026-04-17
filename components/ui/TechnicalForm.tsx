@@ -99,6 +99,32 @@ const DraggablePhoto = ({ photo, onPositionChange }: {
   )
 }
 
+// Recorta imagen con lógica object-cover + posición del usuario, para PDF
+function cropForPdf(url: string, posX: number, posY: number, targetW: number, targetH: number): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width  = targetW
+      canvas.height = targetH
+      const ctx = canvas.getContext('2d')!
+      // object-cover: escalar para cubrir el área manteniendo proporción
+      const scale = Math.max(targetW / img.width, targetH / img.height)
+      const sw = img.width  * scale
+      const sh = img.height * scale
+      // offset según posición del usuario (posX/posY en %)
+      const ox = (sw - targetW) * (posX / 100)
+      const oy = (sh - targetH) * (posY / 100)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, targetW, targetH)
+      ctx.drawImage(img, -ox, -oy, sw, sh)
+      resolve(canvas.toDataURL('image/jpeg', 0.75))
+    }
+    img.onerror = () => resolve(url)
+    img.src = url
+  })
+}
+
 // Descarga una foto al dispositivo
 function downloadPhoto(dataUrl: string, index: number) {
   const a = document.createElement('a')
@@ -1980,11 +2006,12 @@ yPosition += 8;
 
     // Photos Section — comprimir fotos antes de incrustar en PDF
     const rawPhotos: Photo[] = emailPhotosRef.current ?? (formData.photos ?? [])
+    // PDF photo slot ≈ 87mm × 45mm → 776×400 px (same ratio), crop con posición del usuario
     const photosToRender: Photo[] = await Promise.all(
       rawPhotos.map(async (p) => ({
         ...p,
         url: typeof p.url === 'string'
-          ? await compressImage(p.url, 900, 675, 0.55)
+          ? await cropForPdf(p.url, p.posX ?? 50, p.posY ?? 50, 776, 400)
           : p.url,
       }))
     )
