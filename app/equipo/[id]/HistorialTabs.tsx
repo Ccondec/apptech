@@ -14,6 +14,12 @@ interface Informe {
   recomendaciones?: string
 }
 
+const fmtFecha = (fecha?: string) => {
+  if (!fecha) return '—'
+  // "17/04/2026" → "17/04/26"
+  return fecha.replace(/(\d{2})\/(\d{2})\/(\d{4})/, (_, d, m, y) => `${d}/${m}/${y.slice(-2)}`)
+}
+
 export default function HistorialTabs({ informes }: { informes: Informe[] }) {
   const [tab, setTab] = useState(0)
   const v = informes[tab]
@@ -36,7 +42,7 @@ export default function HistorialTabs({ informes }: { informes: Informe[] }) {
                 : 'bg-gray-100 border-transparent text-gray-500 hover:bg-white'
             }`}
           >
-            {inf.fecha ?? `Visita ${i + 1}`}
+            {fmtFecha(inf.fecha) ?? `Visita ${i + 1}`}
           </button>
         ))}
       </div>
