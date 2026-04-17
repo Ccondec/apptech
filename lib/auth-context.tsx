@@ -28,8 +28,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadUser(s: Session | null) {
     if (!s) { setUser(null); setLoading(false); return }
-    const u = await getUsuarioActual()
-    setUser(u as AuthUser | null)
+    // Asegurar que el token esté activo antes de consultar
+    await supabase.auth.setSession({
+      access_token: s.access_token,
+      refresh_token: s.refresh_token,
+    })
+    const { data } = await supabase
+      .from('usuarios')
+      .select('*, empresa:empresas(*)')
+      .eq('id', s.user.id)
+      .single()
+    setUser(data as AuthUser | null)
     setLoading(false)
   }
 
