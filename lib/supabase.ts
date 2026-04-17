@@ -223,17 +223,21 @@ export async function guardarInforme(informe: {
   tecnico: string
   equipo_id?: string
   tipo_reporte?: string
+  empresa_id?: string
 }): Promise<{ ok: boolean; error?: string }> {
-  const usuario = await getUsuarioActual()
-  console.log('guardarInforme - usuario:', usuario)
-  if (!usuario) return { ok: false, error: 'No autenticado.' }
+  let empresaId = informe.empresa_id
+  if (!empresaId) {
+    const usuario = await getUsuarioActual()
+    if (!usuario) return { ok: false, error: 'No autenticado.' }
+    empresaId = usuario.empresa_id
+  }
 
+  const { empresa_id: _, ...rest } = informe
   const { error } = await supabase.from('informes').insert({
-    ...informe,
-    empresa_id: usuario.empresa_id,
+    ...rest,
+    empresa_id: empresaId,
   })
 
-  console.log('guardarInforme - error:', error)
   if (error) return { ok: false, error: error.message }
   return { ok: true }
 }

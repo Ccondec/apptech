@@ -1118,6 +1118,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
         modelo: model, capacidad: capacity, ubicacion: location, tecnico,
         equipo_id: selectedEquipoId ?? undefined,
         tipo_reporte: formData.reportType ?? 'ups',
+        empresa_id: empresaId,
       }).catch(() => {})
     } catch (_e) { /* QR opcional */ }
 
