@@ -1384,10 +1384,21 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     pdf.setFont('helvetica', 'normal');
     pdf.text(`Fecha: ${currentDate} — ${currentTime}`, pageWidth / 2, yPosition + 20, { align: 'center' });
 
-    // QR code — columna derecha, encima de los datos de empresa (16×16 mm)
+    // Company info (derecha, con espacio para QR a su derecha)
     const qrSize = 16
+    const companyX = pageWidth - margin - qrSize - 3
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(companyInfo.name, companyX, yPosition + 5, { align: 'right' });
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(companyInfo.address, companyX, yPosition + 10, { align: 'right' });
+    pdf.text(companyInfo.phone,   companyX, yPosition + 14, { align: 'right' });
+    pdf.text(companyInfo.email,   companyX, yPosition + 18, { align: 'right' });
+
+    // QR code — al lado derecho de los datos de empresa (16×16 mm)
     const qrX = pageWidth - margin - qrSize
-    const qrY = yPosition
+    const qrY = yPosition + 1
     if (qrCanvas) {
       try {
         pdf.addImage(qrCanvas, 'PNG', qrX, qrY, qrSize, qrSize)
@@ -1399,19 +1410,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       } catch (e) { console.error('Error agregando QR al PDF:', e) }
     }
 
-    // Company info (derecha, debajo del QR)
-    const companyX = pageWidth - margin
-    const companyY = qrY + qrSize + 4
-    pdf.setFontSize(11);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text(companyInfo.name, companyX, companyY, { align: 'right' });
-    pdf.setFontSize(8);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(companyInfo.address, companyX, companyY + 5, { align: 'right' });
-    pdf.text(companyInfo.phone,   companyX, companyY + 9, { align: 'right' });
-    pdf.text(companyInfo.email,   companyX, companyY + 13, { align: 'right' });
-
-    yPosition += 28;  // logo/QR(20) + gap(8)
+    yPosition += 28;  // altura cabecera + gap
 
     // Horizontal line
     pdf.setLineWidth(0.5);
