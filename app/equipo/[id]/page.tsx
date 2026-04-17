@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Metadata } from 'next'
-import { CheckCircle, Calendar, Hash, User, Tag, Cpu, Zap, MapPin, ClipboardList, Clock, AlertCircle } from 'lucide-react'
+import { CheckCircle, Hash, User, Tag, Cpu, Zap, MapPin, ClipboardList, AlertCircle } from 'lucide-react'
+import HistorialTabs from './HistorialTabs'
 
 const supabase = createClient(
   'https://deouxnumhspmollumsoz.supabase.co',
@@ -91,49 +92,7 @@ export default async function EquipoPage({ params }: Props) {
         </div>
       </div>
 
-      {/* Historial de visitas */}
-      <div className="w-full max-w-md">
-        <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3 flex items-center gap-2">
-          <Clock className="w-4 h-4" /> Historial de visitas ({informes.length})
-        </h2>
-        <div className="space-y-3">
-          {informes.map((inf: any, i: number) => (
-            <div key={inf.id} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-                  N° {inf.numero_informe || '—'}
-                </span>
-                <span className="flex items-center gap-1 text-xs text-gray-400">
-                  <Calendar className="w-3 h-3" /> {inf.fecha || '—'}
-                </span>
-              </div>
-              {inf.tecnico && (
-                <p className="text-xs text-gray-500 flex items-center gap-1">
-                  <ClipboardList className="w-3 h-3" /> Técnico: <span className="font-medium text-gray-700">{inf.tecnico}</span>
-                </p>
-              )}
-              {inf.tipo_reporte && (
-                <p className="text-xs text-gray-400 mt-1 capitalize">{inf.tipo_reporte}</p>
-              )}
-              {inf.observaciones && (
-                <div className="mt-2 pt-2 border-t border-gray-50">
-                  <p className="text-xs font-medium text-gray-500">Observaciones</p>
-                  <p className="text-xs text-gray-700 mt-0.5">{inf.observaciones}</p>
-                </div>
-              )}
-              {inf.recomendaciones && (
-                <div className="mt-2">
-                  <p className="text-xs font-medium text-gray-500">Recomendaciones</p>
-                  <p className="text-xs text-gray-700 mt-0.5">{inf.recomendaciones}</p>
-                </div>
-              )}
-              {i === 0 && (
-                <span className="inline-block mt-2 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">Último servicio</span>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      <HistorialTabs informes={informes} />
 
       <p className="mt-8 text-xs text-gray-400 text-center">
         Sistema de Informes Técnicos<br />
