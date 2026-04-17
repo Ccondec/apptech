@@ -218,6 +218,8 @@ export interface InformeRecord {
   ubicacion?: string
   tecnico?: string
   tipo_reporte?: string
+  observaciones?: string
+  recomendaciones?: string
   created_at: string
 }
 
@@ -235,6 +237,8 @@ export async function guardarInforme(informe: {
   equipo_id?: string
   tipo_reporte?: string
   empresa_id?: string
+  observaciones?: string
+  recomendaciones?: string
 }): Promise<{ ok: boolean; error?: string }> {
   let empresaId = informe.empresa_id
   if (!empresaId) {

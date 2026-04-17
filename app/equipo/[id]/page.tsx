@@ -115,6 +115,18 @@ export default async function EquipoPage({ params }: Props) {
               {inf.tipo_reporte && (
                 <p className="text-xs text-gray-400 mt-1 capitalize">{inf.tipo_reporte}</p>
               )}
+              {inf.observaciones && (
+                <div className="mt-2 pt-2 border-t border-gray-50">
+                  <p className="text-xs font-medium text-gray-500">Observaciones</p>
+                  <p className="text-xs text-gray-700 mt-0.5">{inf.observaciones}</p>
+                </div>
+              )}
+              {inf.recomendaciones && (
+                <div className="mt-2">
+                  <p className="text-xs font-medium text-gray-500">Recomendaciones</p>
+                  <p className="text-xs text-gray-700 mt-0.5">{inf.recomendaciones}</p>
+                </div>
+              )}
               {i === 0 && (
                 <span className="inline-block mt-2 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">Último servicio</span>
               )}

@@ -1131,6 +1131,8 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
         equipo_id: selectedEquipoId ?? undefined,
         tipo_reporte: formData.reportType ?? 'ups',
         empresa_id: empresaId,
+        observaciones:   String(formData.workDescription  ?? '').trim() || undefined,
+        recomendaciones: String(formData.recommendations  ?? '').trim() || undefined,
       }).catch(() => {})
     } catch (_e) { /* QR opcional */ }
 
@@ -2508,18 +2510,32 @@ yPosition += 8;
                   ) : (
                     <div className="space-y-2">
                       {historial.map((v, i) => (
-                        <div key={v.id ?? i} className="bg-white rounded-xl border border-blue-100 px-4 py-3 flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-800">
-                              {v.fecha}
-                              {v.tipo_reporte && (
-                                <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">{v.tipo_reporte}</span>
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-500 truncate">Técnico: {v.tecnico ?? '—'}</p>
-                            {v.ubicacion && <p className="text-xs text-gray-400 truncate">Ubicación: {v.ubicacion}</p>}
+                        <div key={v.id ?? i} className="bg-white rounded-xl border border-blue-100 px-4 py-3 space-y-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-800">
+                                {v.fecha}
+                                {v.tipo_reporte && (
+                                  <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">{v.tipo_reporte}</span>
+                                )}
+                              </p>
+                              <p className="text-xs text-gray-500 truncate">Técnico: {v.tecnico ?? '—'}</p>
+                              {v.ubicacion && <p className="text-xs text-gray-400 truncate">Ubicación: {v.ubicacion}</p>}
+                            </div>
+                            <span className="text-xs text-gray-400 shrink-0">#{v.numero_informe ?? v.reporte_numero ?? '—'}</span>
                           </div>
-                          <span className="text-xs text-gray-400 shrink-0">#{v.numero_informe ?? v.reporte_numero ?? '—'}</span>
+                          {v.observaciones && (
+                            <div className="pt-1 border-t border-gray-50">
+                              <p className="text-xs font-medium text-gray-500">Observaciones</p>
+                              <p className="text-xs text-gray-700">{v.observaciones}</p>
+                            </div>
+                          )}
+                          {v.recomendaciones && (
+                            <div>
+                              <p className="text-xs font-medium text-gray-500">Recomendaciones</p>
+                              <p className="text-xs text-gray-700">{v.recomendaciones}</p>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
