@@ -321,3 +321,59 @@ export async function listarTecnicos(): Promise<Usuario[]> {
 
   return data ?? []
 }
+
+// ── Tokens de formulario externo ──────────────────────────────
+
+export interface FormToken {
+  id: string
+  empresa_id: string
+  descripcion: string
+  expires_at: string
+  activo: boolean
+  usos: number
+  created_at: string
+}
+
+export async function crearFormToken(descripcion: string): Promise<FormToken | null> {
+  const usuario = await getUsuarioActual()
+  if (!usuario || usuario.rol !== 'admin') return null
+  const { data } = await supabase
+    .from('form_tokens')
+    .insert({
+      empresa_id: usuario.empresa_id,
+      created_by: usuario.id,
+      descripcion: descripcion || 'Técnico externo',
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+    .select()
+    .single()
+  return data ?? null
+}
+
+export async function listarFormTokens(): Promise<FormToken[]> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return []
+  const { data } = await supabase
+    .from('form_tokens')
+    .select('*')
+    .eq('empresa_id', usuario.empresa_id)
+    .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+export async function desactivarFormToken(tokenId: string): Promise<boolean> {
+  const { error } = await supabase.from('form_tokens').update({ activo: false }).eq('id', tokenId)
+  return !error
+}
+
+export async function validarFormToken(tokenId: string): Promise<{ empresaId: string; empresa: Empresa; token: FormToken } | null> {
+  const { data } = await supabase
+    .from('form_tokens')
+    .select('*, empresa:empresas(*)')
+    .eq('id', tokenId)
+    .eq('activo', true)
+    .gt('expires_at', new Date().toISOString())
+    .single()
+  if (!data) return null
+  return { empresaId: data.empresa_id, empresa: data.empresa as Empresa, token: data as FormToken }
+}

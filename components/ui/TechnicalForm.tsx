@@ -953,7 +953,7 @@ const fmtReportNum = (n: number) => {
   return `${yy}-${String(n).padStart(4, '0')}`;
 };
 
-const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string; empresaId?: string; onLogout?: () => void }) => {
+const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { technician: string; empresaId?: string; onLogout?: () => void; externalToken?: string }) => {
   const [formData, setFormData] = useState<FormData>({});
   const [reportNumber, setReportNumber] = useState(1);
   const [isEditingReportNumber, setIsEditingReportNumber] = useState(false);
@@ -1262,38 +1262,58 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
 
     // Sincronizar con Supabase (no bloquea el PDF)
     try {
-      let savedClientId: string | undefined
-      if (client) {
-        const savedClient = await guardarCliente({
-          company: client,
-          contact: formData.clientContact as string ?? '',
-          address: formData.clientAddress as string ?? '',
-          email:   formData.clientEmail   as string ?? '',
-          city:    formData.clientCity    as string ?? '',
-          phone:   formData.clientPhone   as string ?? '',
-        }).catch(() => null)
-        savedClientId = savedClient?.id
-      }
-      if (brand || model || serial) {
-        await guardarEquipo({
-          brand, model, capacity,
-          ubicacion: location,
-          serial: serial || `${brand}-${model}-${Date.now()}`,
+      if (externalToken) {
+        // Modo externo: guardar vía API con token
+        await fetch('/api/submit-informe-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: externalToken,
+            informe: {
+              qr_code: qrCodeId || undefined,
+              numero_informe: repNum,
+              fecha, cliente: client, serial, marca: brand,
+              modelo: model, capacidad: capacity, ubicacion: location, tecnico,
+              tipo_reporte: formData.reportType ?? 'ups',
+              observaciones:   String(formData.description    ?? '').trim() || undefined,
+              recomendaciones: String(formData.recommendations ?? '').trim() || undefined,
+            },
+          }),
+        }).catch(() => {})
+      } else {
+        let savedClientId: string | undefined
+        if (client) {
+          const savedClient = await guardarCliente({
+            company: client,
+            contact: formData.clientContact as string ?? '',
+            address: formData.clientAddress as string ?? '',
+            email:   formData.clientEmail   as string ?? '',
+            city:    formData.clientCity    as string ?? '',
+            phone:   formData.clientPhone   as string ?? '',
+          }).catch(() => null)
+          savedClientId = savedClient?.id
+        }
+        if (brand || model || serial) {
+          await guardarEquipo({
+            brand, model, capacity,
+            ubicacion: location,
+            serial: serial || `${brand}-${model}-${Date.now()}`,
+            qr_code: qrCodeId || undefined,
+            client_id: savedClientId,
+          }).catch(() => {})
+        }
+        await guardarInforme({
           qr_code: qrCodeId || undefined,
-          client_id: savedClientId,
+          numero_informe: repNum,
+          fecha, cliente: client, serial, marca: brand,
+          modelo: model, capacidad: capacity, ubicacion: location, tecnico,
+          equipo_id: selectedEquipoId ?? undefined,
+          tipo_reporte: formData.reportType ?? 'ups',
+          empresa_id: empresaId,
+          observaciones:   String(formData.description    ?? '').trim() || undefined,
+          recomendaciones: String(formData.recommendations ?? '').trim() || undefined,
         }).catch(() => {})
       }
-      await guardarInforme({
-        qr_code: qrCodeId || undefined,
-        numero_informe: repNum,
-        fecha, cliente: client, serial, marca: brand,
-        modelo: model, capacidad: capacity, ubicacion: location, tecnico,
-        equipo_id: selectedEquipoId ?? undefined,
-        tipo_reporte: formData.reportType ?? 'ups',
-        empresa_id: empresaId,
-        observaciones:   String(formData.description    ?? '').trim() || undefined,
-        recomendaciones: String(formData.recommendations ?? '').trim() || undefined,
-      }).catch(() => {})
     } catch (_e) { /* Supabase opcional */ }
 
     // Create a new jsPDF instance
@@ -2282,7 +2302,7 @@ yPosition += 8;
       const arrayBuffer = pdf.output('arraybuffer')
 
       // Subir PDF a Supabase Storage y usar URL (evita límite de 4.5 MB de Vercel)
-      const pdfUrl = empresaId
+      const pdfUrl = (empresaId && !externalToken)
         ? await uploadReportePdf(arrayBuffer, empresaId, filename)
         : null
 

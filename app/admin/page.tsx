@@ -6,7 +6,8 @@ import { supabase, Usuario } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2 } from 'lucide-react'
+import { crearFormToken, listarFormTokens, desactivarFormToken, FormToken } from '@/lib/supabase'
 
 export default function AdminPage() {
   const { user, loading } = useAuth()
@@ -22,6 +23,11 @@ export default function AdminPage() {
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   const [createSuccess, setCreateSuccess] = useState(false)
+
+  const [tokens, setTokens] = useState<FormToken[]>([])
+  const [tokenDesc, setTokenDesc] = useState('')
+  const [generatingToken, setGeneratingToken] = useState(false)
+  const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && !user) { router.push('/login'); return }
@@ -41,6 +47,34 @@ export default function AdminPage() {
   }, [user])
 
   useEffect(() => { cargarUsuarios() }, [cargarUsuarios])
+
+  const cargarTokens = useCallback(async () => {
+    const data = await listarFormTokens()
+    setTokens(data)
+  }, [])
+
+  useEffect(() => { cargarTokens() }, [cargarTokens])
+
+  const generarToken = async () => {
+    setGeneratingToken(true)
+    const token = await crearFormToken(tokenDesc || 'Técnico externo')
+    if (token) {
+      setTokenDesc('')
+      cargarTokens()
+    }
+    setGeneratingToken(false)
+  }
+
+  const copiarEnlaceToken = (tokenId: string) => {
+    navigator.clipboard.writeText(`https://apptech-one.vercel.app/form/${tokenId}`)
+    setCopiedTokenId(tokenId)
+    setTimeout(() => setCopiedTokenId(null), 2000)
+  }
+
+  const desactivar = async (tokenId: string) => {
+    await desactivarFormToken(tokenId)
+    cargarTokens()
+  }
 
   const toggleActivo = async (u: Usuario) => {
     await supabase.from('usuarios').update({ activo: !u.activo }).eq('id', u.id)
@@ -204,6 +238,75 @@ export default function AdminPage() {
               </Button>
             </div>
           </form>
+        </div>
+
+        {/* Enlace para técnico externo */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
+            <Link2 className="w-4 h-4" /> Enlace para técnico externo
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Genera un enlace temporal para que un técnico sin cuenta pueda llenar un informe técnico.
+          </p>
+
+          <div className="flex gap-2 mb-6">
+            <input
+              type="text"
+              value={tokenDesc}
+              onChange={e => setTokenDesc(e.target.value)}
+              placeholder="Descripción (ej: Visita empresa ABC)"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <Button
+              onClick={generarToken}
+              disabled={generatingToken}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {generatingToken ? 'Generando…' : 'Generar enlace'}
+            </Button>
+          </div>
+
+          {tokens.length > 0 && (
+            <div className="divide-y divide-gray-50">
+              {tokens.map(token => {
+                const expired = new Date(token.expires_at) < new Date()
+                const isActive = token.activo && !expired
+                return (
+                  <div key={token.id} className="py-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-gray-800 truncate">{token.descripcion}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                          {isActive ? 'activo' : 'expirado'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Vence: {new Date(token.expires_at).toLocaleDateString('es-CO')} · Usos: {token.usos}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => copiarEnlaceToken(token.id)}
+                        className="text-gray-400 hover:text-green-600 p-1"
+                        title="Copiar enlace"
+                      >
+                        {copiedTokenId === token.id ? <CheckCircle className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                      {isActive && (
+                        <button
+                          onClick={() => desactivar(token.id)}
+                          className="text-gray-400 hover:text-red-500 p-1"
+                          title="Desactivar"
+                        >
+                          <UserX className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
       </main>
