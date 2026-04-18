@@ -24,6 +24,7 @@ export interface EmpresaConfig {
   nombre_comercial: string
   telefono: string
   direccion: string
+  ciudad: string
   email_contacto: string
   logo: string
 }
@@ -291,7 +292,7 @@ export async function uploadReportePdf(
 export async function getEmpresaConfig(empresaId: string): Promise<EmpresaConfig | null> {
   const { data } = await supabase
     .from('empresas')
-    .select('nombre_comercial, telefono, direccion, email_contacto, logo')
+    .select('nombre_comercial, telefono, direccion, ciudad, email_contacto, logo')
     .eq('id', empresaId)
     .single()
   return data ?? null

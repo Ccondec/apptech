@@ -36,6 +36,7 @@ export default function ConfiguracionPage() {
   const [nombreComercial, setNombreComercial] = useState('')
   const [telefono, setTelefono] = useState('')
   const [direccion, setDireccion] = useState('')
+  const [ciudad, setCiudad] = useState('')
   const [emailContacto, setEmailContacto] = useState('')
   const [logo, setLogo] = useState('')
   const [logoPosX, setLogoPosX] = useState(50)
@@ -69,6 +70,7 @@ export default function ConfiguracionPage() {
       setNombreComercial(config.nombre_comercial ?? '')
       setTelefono(config.telefono ?? '')
       setDireccion(config.direccion ?? '')
+      setCiudad((config as any).ciudad ?? '')
       setEmailContacto(config.email_contacto ?? '')
       setLogo(config.logo ?? '')
     })
@@ -107,6 +109,7 @@ export default function ConfiguracionPage() {
       nombre_comercial: nombreComercial.trim(),
       telefono: telefono.trim(),
       direccion: direccion.trim(),
+      ciudad: ciudad.trim(),
       email_contacto: emailContacto.trim(),
       logo,
     })
@@ -211,14 +214,25 @@ export default function ConfiguracionPage() {
             </div>
           </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="direccion">Dirección</Label>
-            <Input
-              id="direccion"
-              value={direccion}
-              onChange={e => setDireccion(e.target.value)}
-              placeholder="Calle 00 # 00-00, Ciudad"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="direccion">Dirección</Label>
+              <Input
+                id="direccion"
+                value={direccion}
+                onChange={e => setDireccion(e.target.value)}
+                placeholder="Calle 00 # 00-00"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="ciudad">Ciudad</Label>
+              <Input
+                id="ciudad"
+                value={ciudad}
+                onChange={e => setCiudad(e.target.value)}
+                placeholder="Bogotá"
+              />
+            </div>
           </div>
 
           {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}

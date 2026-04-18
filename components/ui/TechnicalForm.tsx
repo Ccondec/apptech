@@ -1127,12 +1127,13 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     setFormData(prev => ({
       ...prev,
       // Equipo
-      equipmentBrand:    eq.brand     ?? '',
-      equipmentModel:    eq.model     ?? '',
-      equipmentCapacity: eq.capacity  ?? '',
-      equipmentSerial:   eq.serial    ?? '',
+      equipmentBrand:     eq.brand     ?? '',
+      equipmentModel:     eq.model     ?? '',
+      equipmentCapacity:  eq.capacity  ?? '',
+      capacity:           eq.capacity  ?? '',   // campo que usa el formulario
+      equipmentSerial:    eq.serial    ?? '',
       equipmentUbicacion: eq.ubicacion ?? '',
-      qrCode:            eq.qr_code   ?? '',
+      qrCode:             eq.qr_code   ?? '',
       // Cliente vinculado
       ...(eq.client_company ? {
         clientCompany:  eq.client_company,
@@ -1159,6 +1160,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
   const [companyInfo, setCompanyInfo] = useState({
     name: '',
     address: '',
+    city: '',
     phone: '',
     email: '',
   });
@@ -1170,6 +1172,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       setCompanyInfo({
         name:    config.nombre_comercial ?? '',
         address: config.direccion        ?? '',
+        city:    (config as any).ciudad  ?? '',
         phone:   config.telefono         ?? '',
         email:   config.email_contacto   ?? '',
       })
@@ -1412,9 +1415,11 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     pdf.text(companyInfo.name, companyX, yPosition + 5, { align: 'right' });
     pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
-    pdf.text(companyInfo.address, companyX, yPosition + 10, { align: 'right' });
-    pdf.text(companyInfo.phone,   companyX, yPosition + 14, { align: 'right' });
-    pdf.text(companyInfo.email,   companyX, yPosition + 18, { align: 'right' });
+    let ciY = yPosition + 10
+    if (companyInfo.address) { pdf.text(companyInfo.address, companyX, ciY, { align: 'right' }); ciY += 4 }
+    if (companyInfo.city)    { pdf.text(companyInfo.city,    companyX, ciY, { align: 'right' }); ciY += 4 }
+    if (companyInfo.phone)   { pdf.text(companyInfo.phone,   companyX, ciY, { align: 'right' }); ciY += 4 }
+    if (companyInfo.email)   { pdf.text(companyInfo.email,   companyX, ciY, { align: 'right' }) }
 
     // QR code — al lado derecho de los datos de empresa (16×16 mm)
     const qrX = pageWidth - margin - qrSize
@@ -2454,9 +2459,10 @@ yPosition += 8;
             {/* Company info */}
             <div className="text-center sm:text-right order-3">
               <h2 className="font-bold text-xl sm:text-2xl">{companyInfo.name}</h2>
-              <p className="text-sm text-gray-600">{companyInfo.address}</p>
-              <p className="text-sm text-gray-600">{companyInfo.phone}</p>
-              <p className="text-sm text-gray-600">{companyInfo.email}</p>
+              {companyInfo.address && <p className="text-sm text-gray-600">{companyInfo.address}</p>}
+              {companyInfo.city    && <p className="text-sm text-gray-600">{companyInfo.city}</p>}
+              {companyInfo.phone   && <p className="text-sm text-gray-600">{companyInfo.phone}</p>}
+              {companyInfo.email   && <p className="text-sm text-gray-600">{companyInfo.email}</p>}
               <div className="flex items-center justify-center sm:justify-end gap-2 mt-2">
                 <span className="text-sm font-medium text-green-700">👤 {technician}</span>
                 <button
