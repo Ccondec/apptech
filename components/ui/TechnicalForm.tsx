@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
-import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, siguienteNumeroInforme, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
+import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, actualizarPdfUrl, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, siguienteNumeroInforme, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
 import AireParams from './AireParams'
 import PlantaParams from './PlantaParams'
 import FotovoltaicoParams from './FotovoltaicoParams'
@@ -1245,6 +1245,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
     const location = String(formData.equipmentUbicacion ?? formData.equipmentLocation ?? '').trim()
     const client   = String(formData.clientCompany     ?? '').trim()
     const fecha    = new Date().toLocaleDateString('es-CO')
+    let savedInformeId: string | undefined
 
     // Obtener número consecutivo atómico desde la BD (solo usuarios autenticados)
     let activeReportNum = reportNumber
@@ -1317,7 +1318,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
             client_id: savedClientId,
           }).catch(() => {})
         }
-        await guardarInforme({
+        const informeResult = await guardarInforme({
           qr_code: qrCodeId || undefined,
           numero_informe: repNum,
           fecha, cliente: client, serial, marca: brand,
@@ -1327,7 +1328,10 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
           empresa_id: empresaId,
           observaciones:   String(formData.description    ?? '').trim() || undefined,
           recomendaciones: String(formData.recommendations ?? '').trim() || undefined,
-        }).catch(() => {})
+        }).catch(() => ({ ok: false as const }))
+        if (informeResult.ok && informeResult.id) {
+          savedInformeId = informeResult.id
+        }
       }
     } catch (_e) { /* Supabase opcional */ }
 
@@ -2269,8 +2273,20 @@ yPosition += 8;
       pdf.setPage(i);
       addFooter(i, totalPages);
     }
-    
-    return { pdf, filename };
+
+    // Subir PDF a Supabase Storage y guardar la URL en el informe
+    let pdfUrl: string | null = null
+    if (empresaId && !externalToken) {
+      try {
+        const arrayBuffer = pdf.output('arraybuffer')
+        pdfUrl = await uploadReportePdf(arrayBuffer, empresaId, filename)
+        if (pdfUrl && savedInformeId) {
+          actualizarPdfUrl(savedInformeId, pdfUrl).catch(() => {})
+        }
+      } catch { /* Storage opcional */ }
+    }
+
+    return { pdf, filename, pdfUrl };
   }, [formData, reportNumber, logo, currentDate, currentTime, companyInfo, technician]);
 
   const generatePDF = useCallback(async () => {
@@ -2312,22 +2328,20 @@ yPosition += 8;
           url: typeof p.url === 'string' ? await compressImageForEmail(p.url) : p.url,
         }))
       )
-      const { pdf, filename } = await buildPDF();
+      const { pdf, filename, pdfUrl } = await buildPDF();
       emailPhotosRef.current = null;
-      const arrayBuffer = pdf.output('arraybuffer')
 
-      // Subir PDF a Supabase Storage y usar URL (evita límite de 4.5 MB de Vercel)
-      const pdfUrl = (empresaId && !externalToken)
-        ? await uploadReportePdf(arrayBuffer, empresaId, filename)
-        : null
-
-      // Fallback a base64 solo si el PDF es pequeño (<3 MB) y no se pudo subir
+      // pdfUrl ya fue subido a Storage dentro de buildPDF.
+      // Fallback a base64 solo si el upload falló y el PDF es pequeño (<3 MB)
       let pdfBase64: string | undefined
-      if (!pdfUrl && arrayBuffer.byteLength < 3_000_000) {
-        const bytes = new Uint8Array(arrayBuffer)
-        let binary = ''
-        bytes.forEach(b => { binary += String.fromCharCode(b) })
-        pdfBase64 = btoa(binary)
+      if (!pdfUrl) {
+        const arrayBuffer = pdf.output('arraybuffer')
+        if (arrayBuffer.byteLength < 3_000_000) {
+          const bytes = new Uint8Array(arrayBuffer)
+          let binary = ''
+          bytes.forEach(b => { binary += String.fromCharCode(b) })
+          pdfBase64 = btoa(binary)
+        }
       }
 
       if (!pdfUrl && !pdfBase64) {
@@ -2770,9 +2784,21 @@ yPosition += 8;
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
                               <div>
                                 <p className="text-[10px] text-gray-400 uppercase tracking-wide">Informe</p>
-                                <p className="text-xs font-bold text-blue-700">
-                                  #{v.numero_informe ?? v.reporte_numero ?? '—'}
+                                <p className="text-xs font-bold text-blue-700 flex items-center gap-2 flex-wrap">
+                                  <span>#{v.numero_informe ?? v.reporte_numero ?? '—'}
                                   {v.fecha && <span className="ml-1 font-normal text-gray-400">· {v.fecha.replace(/(\d{2})\/(\d{2})\/(\d{4})/, (_, d, m, y) => `${d}/${m}/${y.slice(-2)}`)}</span>}
+                                  </span>
+                                  {v.pdf_url && (
+                                    <a
+                                      href={v.pdf_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full transition-colors"
+                                      title="Descargar PDF"
+                                    >
+                                      <Download className="w-3 h-3" /> PDF
+                                    </a>
+                                  )}
                                 </p>
                               </div>
                               {v.tipo_reporte && (

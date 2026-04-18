@@ -222,6 +222,7 @@ export interface InformeRecord {
   tipo_reporte?: string
   observaciones?: string
   recomendaciones?: string
+  pdf_url?: string
   created_at: string
 }
 
@@ -241,7 +242,7 @@ export async function guardarInforme(informe: {
   empresa_id?: string
   observaciones?: string
   recomendaciones?: string
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
   let empresaId = informe.empresa_id
   if (!empresaId) {
     const usuario = await getUsuarioActual()
@@ -250,13 +251,17 @@ export async function guardarInforme(informe: {
   }
 
   const { empresa_id: _, ...rest } = informe
-  const { error } = await supabase.from('informes').insert({
+  const { data, error } = await supabase.from('informes').insert({
     ...rest,
     empresa_id: empresaId,
-  })
+  }).select('id').single()
 
   if (error) return { ok: false, error: error.message }
-  return { ok: true }
+  return { ok: true, id: data?.id }
+}
+
+export async function actualizarPdfUrl(informeId: string, pdfUrl: string): Promise<void> {
+  await supabase.from('informes').update({ pdf_url: pdfUrl }).eq('id', informeId)
 }
 
 export async function listarHistorialEquipo(equipoId: string, qrCode?: string): Promise<InformeRecord[]> {
