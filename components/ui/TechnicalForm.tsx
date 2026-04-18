@@ -1417,9 +1417,9 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     pdf.setFont('helvetica', 'normal');
     let ciY = yPosition + 10
     if (companyInfo.address) { pdf.text(companyInfo.address, companyX, ciY, { align: 'right' }); ciY += 4 }
-    if (companyInfo.city)    { pdf.text(companyInfo.city,    companyX, ciY, { align: 'right' }); ciY += 4 }
     if (companyInfo.phone)   { pdf.text(companyInfo.phone,   companyX, ciY, { align: 'right' }); ciY += 4 }
-    if (companyInfo.email)   { pdf.text(companyInfo.email,   companyX, ciY, { align: 'right' }) }
+    if (companyInfo.email)   { pdf.text(companyInfo.email,   companyX, ciY, { align: 'right' }); ciY += 4 }
+    if (companyInfo.city)    { pdf.text(companyInfo.city,    companyX, ciY, { align: 'right' }) }
 
     // QR code — al lado derecho de los datos de empresa (16×16 mm)
     const qrX = pageWidth - margin - qrSize
@@ -2460,20 +2460,11 @@ yPosition += 8;
             <div className="text-center sm:text-right order-3">
               <h2 className="font-bold text-xl sm:text-2xl">{companyInfo.name}</h2>
               {companyInfo.address && <p className="text-sm text-gray-600">{companyInfo.address}</p>}
-              {companyInfo.city    && <p className="text-sm text-gray-600">{companyInfo.city}</p>}
               {companyInfo.phone   && <p className="text-sm text-gray-600">{companyInfo.phone}</p>}
               {companyInfo.email   && <p className="text-sm text-gray-600">{companyInfo.email}</p>}
-              <div className="flex items-center justify-center sm:justify-end gap-2 mt-2">
+              {companyInfo.city    && <p className="text-sm text-gray-600">{companyInfo.city}</p>}
+              <div className="flex items-center justify-center sm:justify-end mt-2">
                 <span className="text-sm font-medium text-green-700">👤 {technician}</span>
-                <button
-                  type="button"
-                  onClick={onLogout}
-                  className="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1 transition-colors"
-                  title="Cerrar sesión"
-                >
-                  <LogOut className="w-3 h-3" />
-                  Salir
-                </button>
               </div>
             </div>
           </div>
