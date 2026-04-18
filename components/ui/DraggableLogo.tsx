@@ -45,7 +45,7 @@ export default function DraggableLogo({
   return (
     <div
       ref={containerRef}
-      className={`overflow-hidden rounded-xl cursor-grab active:cursor-grabbing select-none relative ${className}`}
+      className={`overflow-hidden rounded-xl cursor-grab active:cursor-grabbing select-none relative bg-white ${className}`}
       onMouseDown={e => { e.preventDefault(); startDrag(e.clientX, e.clientY) }}
       onMouseMove={e => moveDrag(e.clientX, e.clientY)}
       onMouseUp={endDrag} onMouseLeave={endDrag}
@@ -72,11 +72,10 @@ export default function DraggableLogo({
         src={src}
         alt="Company Logo"
         draggable={false}
-        className="w-full h-full object-cover pointer-events-none"
+        className="w-full h-full object-contain pointer-events-none"
         style={{
-          objectPosition: `${posX}% ${posY}%`,
           transform: `scale(${zoom})`,
-          transformOrigin: `${posX}% ${posY}%`,
+          transformOrigin: 'center center',
         }}
       />
       <button

@@ -99,6 +99,30 @@ const DraggablePhoto = ({ photo, onPositionChange }: {
   )
 }
 
+// Renderiza logo con lógica object-contain (logo siempre completo, centrado)
+function renderLogoForPdf(url: string, zoom: number, targetW: number, targetH: number): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width  = targetW
+      canvas.height = targetH
+      const ctx = canvas.getContext('2d')!
+      const scale = Math.min(targetW / img.width, targetH / img.height) * zoom
+      const sw = img.width  * scale
+      const sh = img.height * scale
+      const dx = (targetW - sw) / 2
+      const dy = (targetH - sh) / 2
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, targetW, targetH)
+      ctx.drawImage(img, dx, dy, sw, sh)
+      resolve(canvas.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = () => resolve(url)
+    img.src = url
+  })
+}
+
 // Recorta imagen con lógica object-cover + posición + zoom del usuario, para PDF
 function cropForPdf(url: string, posX: number, posY: number, targetW: number, targetH: number, zoom = 1): Promise<string> {
   return new Promise(resolve => {
@@ -1354,7 +1378,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
     const logoW = 40, logoH = 20
     if (logo) {
       try {
-        const croppedLogo = await cropForPdf(logo, logoPosX, logoPosY, 151, 76, logoZoom)
+        const croppedLogo = await renderLogoForPdf(logo, logoZoom, 256, 128)
         pdf.addImage(croppedLogo, 'JPEG', margin, yPosition, logoW, logoH)
       } catch (_e) { console.warn('Could not add logo to PDF') }
     }
@@ -2373,17 +2397,16 @@ yPosition += 8;
             {/* Logo section — solo visualización, gestión desde Admin */}
             <div className="order-2 sm:order-1 mx-auto sm:mx-0">
               {logo ? (
-                <div className="w-64 h-32 overflow-hidden rounded-lg">
+                <div className="w-64 h-32 overflow-hidden rounded-lg bg-white flex items-center justify-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={logo}
                     alt="Company Logo"
                     draggable={false}
-                    className="w-full h-full object-cover pointer-events-none"
+                    className="max-w-full max-h-full object-contain pointer-events-none"
                     style={{
-                      objectPosition: `${logoPosX}% ${logoPosY}%`,
                       transform: `scale(${logoZoom})`,
-                      transformOrigin: `${logoPosX}% ${logoPosY}%`,
+                      transformOrigin: 'center center',
                     }}
                   />
                 </div>
