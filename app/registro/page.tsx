@@ -9,41 +9,33 @@ import { UserPlus, Eye, EyeOff, Zap, CheckCircle, ShieldCheck, Wrench } from 'lu
 
 export default function RegistroPage() {
   const router = useRouter()
-  const [nombre, setNombre]         = useState('')
-  const [email, setEmail]           = useState('')
-  const [password, setPassword]     = useState('')
-  const [password2, setPassword2]   = useState('')
-  const [licencia, setLicencia]     = useState('')
-  const [rol, setRol]               = useState<'admin' | 'tecnico'>('tecnico')
-  const [showPass, setShowPass]     = useState(false)
-  const [loading, setLoading]       = useState(false)
-  const [error, setError]           = useState('')
-  const [success, setSuccess]       = useState(false)
+  const [nombre, setNombre]       = useState('')
+  const [email, setEmail]         = useState('')
+  const [password, setPassword]   = useState('')
+  const [password2, setPassword2] = useState('')
+  const [licencia, setLicencia]   = useState('')
+  const [showPass, setShowPass]   = useState(false)
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState('')
+  const [success, setSuccess]     = useState(false)
+  const [rolAsignado, setRolAsignado] = useState<'admin' | 'tecnico' | null>(null)
 
   const handleRegistro = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
-    if (password !== password2) {
-      setError('Las contraseñas no coinciden.')
-      return
-    }
-    if (password.length < 6) {
-      setError('La contraseña debe tener mínimo 6 caracteres.')
-      return
-    }
+    if (password !== password2) { setError('Las contraseñas no coinciden.'); return }
+    if (password.length < 6)    { setError('La contraseña debe tener mínimo 6 caracteres.'); return }
 
     setLoading(true)
-    const result = await registrarConLicencia(email, password, nombre, licencia, rol)
+    const result = await registrarConLicencia(email, password, nombre, licencia)
     setLoading(false)
 
-    if (!result.ok) {
-      setError(result.error ?? 'Error al registrarse.')
-      return
-    }
+    if (!result.ok) { setError(result.error ?? 'Error al registrarse.'); return }
 
+    setRolAsignado(result.rol ?? 'tecnico')
     setSuccess(true)
-    setTimeout(() => router.push('/'), 2000)
+    setTimeout(() => router.push('/'), 2500)
   }
 
   if (success) {
@@ -54,7 +46,18 @@ export default function RegistroPage() {
             <CheckCircle className="w-9 h-9 text-green-600" />
           </div>
           <h2 className="text-xl font-bold text-gray-800">¡Cuenta creada!</h2>
-          <p className="text-sm text-gray-500 mt-2">Redirigiendo…</p>
+          {rolAsignado === 'admin' ? (
+            <div className="flex items-center justify-center gap-2 mt-2 text-green-700">
+              <ShieldCheck className="w-4 h-4" />
+              <p className="text-sm font-medium">Fuiste registrado como Administrador</p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2 mt-2 text-blue-600">
+              <Wrench className="w-4 h-4" />
+              <p className="text-sm font-medium">Fuiste registrado como Técnico</p>
+            </div>
+          )}
+          <p className="text-sm text-gray-400 mt-2">Redirigiendo…</p>
         </div>
       </div>
     )
@@ -72,7 +75,11 @@ export default function RegistroPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-5">Crear cuenta</h2>
+          <h2 className="text-lg font-semibold text-gray-800 mb-1">Crear cuenta</h2>
+          <p className="text-xs text-gray-400 mb-5">
+            El primer usuario registrado con la licencia será el <strong>Administrador</strong>.
+            Los siguientes serán <strong>Técnicos</strong>.
+          </p>
 
           <form onSubmit={handleRegistro} className="space-y-4">
             <div className="space-y-2">
@@ -80,7 +87,7 @@ export default function RegistroPage() {
               <Input
                 id="nombre"
                 value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
+                onChange={e => setNombre(e.target.value)}
                 placeholder="Tu nombre"
                 required
               />
@@ -92,7 +99,7 @@ export default function RegistroPage() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={e => setEmail(e.target.value)}
                 placeholder="correo@empresa.com"
                 required
               />
@@ -105,7 +112,7 @@ export default function RegistroPage() {
                   id="password"
                   type={showPass ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={e => setPassword(e.target.value)}
                   placeholder="Mínimo 6 caracteres"
                   required
                 />
@@ -125,45 +132,10 @@ export default function RegistroPage() {
                 id="password2"
                 type="password"
                 value={password2}
-                onChange={(e) => setPassword2(e.target.value)}
+                onChange={e => setPassword2(e.target.value)}
                 placeholder="Repite la contraseña"
                 required
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Tipo de cuenta</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRol('tecnico')}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-colors text-sm font-medium ${
-                    rol === 'tecnico'
-                      ? 'border-green-600 bg-green-50 text-green-700'
-                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  <Wrench className="w-5 h-5" />
-                  Técnico
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRol('admin')}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-colors text-sm font-medium ${
-                    rol === 'admin'
-                      ? 'border-green-600 bg-green-50 text-green-700'
-                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  <ShieldCheck className="w-5 h-5" />
-                  Administrador
-                </button>
-              </div>
-              {rol === 'admin' && (
-                <p className="text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg">
-                  Solo puede haber un administrador por empresa.
-                </p>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -171,11 +143,11 @@ export default function RegistroPage() {
               <Input
                 id="licencia"
                 value={licencia}
-                onChange={(e) => setLicencia(e.target.value.toUpperCase())}
+                onChange={e => setLicencia(e.target.value.toUpperCase())}
                 placeholder="IONENERGY-XXXX-XXXX"
                 required
               />
-              <p className="text-xs text-gray-400">Proporcionada por el administrador de tu empresa</p>
+              <p className="text-xs text-gray-400">Proporcionada por el administrador de Apptech</p>
             </div>
 
             {error && (
@@ -195,9 +167,7 @@ export default function RegistroPage() {
           <div className="mt-4 text-center">
             <p className="text-sm text-gray-500">
               ¿Ya tienes cuenta?{' '}
-              <a href="/login" className="text-green-600 font-medium hover:underline">
-                Inicia sesión
-              </a>
+              <a href="/login" className="text-green-600 font-medium hover:underline">Inicia sesión</a>
             </p>
           </div>
         </div>

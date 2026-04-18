@@ -151,11 +151,11 @@ export default function ConfiguracionPage() {
                     setLogoPosX(50); setLogoPosY(50); setLogoZoom(1)
                     if (fileRef.current) fileRef.current.value = ''
                   }}
-                  className="w-48 h-28 border border-gray-200"
+                  className="w-64 h-32 border border-gray-200"
                 />
               ) : (
                 <div
-                  className="w-48 h-28 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-300 cursor-pointer hover:border-green-400 hover:text-green-400 transition-colors"
+                  className="w-64 h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-300 cursor-pointer hover:border-green-400 hover:text-green-400 transition-colors"
                   onClick={() => fileRef.current?.click()}
                 >
                   <Building2 className="w-8 h-8 mb-1" />

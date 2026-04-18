@@ -92,8 +92,7 @@ export async function registrarConLicencia(
   password: string,
   nombre: string,
   licenseKey: string,
-  rol: 'admin' | 'tecnico' = 'tecnico'
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; rol?: 'admin' | 'tecnico' }> {
   // 1. Validar clave de licencia
   const { data: empresa, error: empErr } = await supabase
     .from('empresas')
@@ -107,18 +106,14 @@ export async function registrarConLicencia(
     return { ok: false, error: 'La licencia ha expirado.' }
   }
 
-  // 2. Si quiere ser admin, verificar que no exista uno ya
-  if (rol === 'admin') {
-    const { count } = await supabase
-      .from('usuarios')
-      .select('id', { count: 'exact', head: true })
-      .eq('empresa_id', empresa.id)
-      .eq('rol', 'admin')
+  // 2. Auto-determinar rol: el primero en registrarse con esta licencia es admin
+  const { count } = await supabase
+    .from('usuarios')
+    .select('id', { count: 'exact', head: true })
+    .eq('empresa_id', empresa.id)
+    .eq('rol', 'admin')
 
-    if ((count ?? 0) > 0) {
-      return { ok: false, error: 'Esta empresa ya tiene un administrador registrado.' }
-    }
-  }
+  const rol: 'admin' | 'tecnico' = (count ?? 0) === 0 ? 'admin' : 'tecnico'
 
   // 3. Crear usuario en Supabase Auth
   const { data: authData, error: authErr } = await supabase.auth.signUp({
@@ -138,7 +133,7 @@ export async function registrarConLicencia(
   })
 
   if (profileErr) return { ok: false, error: 'Error al crear perfil.' }
-  return { ok: true }
+  return { ok: true, rol }
 }
 
 // ── Clientes ──────────────────────────────────────────────────

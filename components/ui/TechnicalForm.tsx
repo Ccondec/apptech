@@ -2373,7 +2373,7 @@ yPosition += 8;
             {/* Logo section — solo visualización, gestión desde Admin */}
             <div className="order-2 sm:order-1 mx-auto sm:mx-0">
               {logo ? (
-                <div className="w-48 h-28 overflow-hidden rounded-lg">
+                <div className="w-64 h-32 overflow-hidden rounded-lg">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={logo}
@@ -2388,7 +2388,7 @@ yPosition += 8;
                   />
                 </div>
               ) : (
-                <div className="w-48 h-28 bg-gray-100 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300">
+                <div className="w-64 h-32 bg-gray-100 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300">
                   <span className="text-gray-400 font-semibold text-sm">LOGO</span>
                   <span className="text-gray-400 text-xs mt-1">Configura en Admin</span>
                 </div>
