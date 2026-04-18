@@ -2,7 +2,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
 import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
-import DraggableLogo from './DraggableLogo'
 import AireParams from './AireParams'
 import PlantaParams from './PlantaParams'
 import FotovoltaicoParams from './FotovoltaicoParams'
@@ -961,7 +960,6 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
   const currentDate = new Date().toLocaleDateString();
   const currentTime = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
   const formRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cargar datos guardados al iniciar
@@ -1061,22 +1059,6 @@ const TechnicalForm = ({ technician, empresaId, onLogout }: { technician: string
       img.src = dataUrl
     })
   }, [])
-
-  const handleLogoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const result = event.target?.result;
-      if (typeof result === 'string') {
-        // Comprimir logo: máx 400×200 px, calidad 0.7 JPEG
-        const compressed = await compressImage(result, 400, 200, 0.7)
-        setLogo(compressed);
-      }
-    };
-    reader.readAsDataURL(file);
-  }, [compressImage]);
 
   const handleFieldChange = useCallback((field: string, value: unknown) => {
     setFormData((prev: FormData) => ({ ...prev, [field]: value }));
@@ -2388,36 +2370,29 @@ yPosition += 8;
       <Card className="w-full" ref={formRef}>
         <CardHeader className="space-y-2">
           <div className="grid grid-cols-1 sm:grid-cols-3 items-start gap-4">
-            {/* Logo section */}
-            <div className="relative order-2 sm:order-1">
+            {/* Logo section — solo visualización, gestión desde Admin */}
+            <div className="order-2 sm:order-1 mx-auto sm:mx-0">
               {logo ? (
-                <div className="w-32 h-20 sm:w-40 sm:h-24 mx-auto sm:mx-0">
-                  <DraggableLogo
+                <div className="w-48 h-28 overflow-hidden rounded-lg">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                     src={logo}
-                    posX={logoPosX}
-                    posY={logoPosY}
-                    zoom={logoZoom}
-                    onPositionChange={(x, y) => { setLogoPosX(x); setLogoPosY(y) }}
-                    onZoomChange={z => setLogoZoom(z)}
-                    onRemove={() => { setLogo(null); setLogoPosX(50); setLogoPosY(50); setLogoZoom(1) }}
+                    alt="Company Logo"
+                    draggable={false}
+                    className="w-full h-full object-cover pointer-events-none"
+                    style={{
+                      objectPosition: `${logoPosX}% ${logoPosY}%`,
+                      transform: `scale(${logoZoom})`,
+                      transformOrigin: `${logoPosX}% ${logoPosY}%`,
+                    }}
                   />
                 </div>
               ) : (
-                <div
-                  className="w-32 h-20 sm:w-40 sm:h-24 bg-gray-200 flex flex-col items-center justify-center rounded cursor-pointer hover:bg-gray-300 mx-auto sm:mx-0 transition-colors"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <span className="text-gray-500 font-bold text-sm">LOGO</span>
-                  <span className="text-gray-500 text-xs">Click para cargar</span>
+                <div className="w-48 h-28 bg-gray-100 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300">
+                  <span className="text-gray-400 font-semibold text-sm">LOGO</span>
+                  <span className="text-gray-400 text-xs mt-1">Configura en Admin</span>
                 </div>
               )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleLogoChange}
-              />
             </div>
             
             {/* Title section */}
