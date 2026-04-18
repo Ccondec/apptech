@@ -6,7 +6,7 @@ import { supabase, Usuario } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2 } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText } from 'lucide-react'
 import { crearFormToken, listarFormTokens, desactivarFormToken, FormToken } from '@/lib/supabase'
 
 export default function AdminPage() {
@@ -128,7 +128,10 @@ export default function AdminPage() {
           </button>
           <h1 className="text-lg font-semibold text-gray-800">Panel de Administración</h1>
           <span className="text-sm text-gray-400 ml-1">— {user.empresa?.nombre}</span>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Button onClick={() => router.push('/admin/informes')} className="bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Informes
+            </Button>
             <Button onClick={() => router.push('/admin/configuracion')} className="bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center gap-2">
               <Settings className="w-4 h-4" /> Configuración
             </Button>

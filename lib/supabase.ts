@@ -264,6 +264,34 @@ export async function actualizarPdfUrl(informeId: string, pdfUrl: string): Promi
   await supabase.from('informes').update({ pdf_url: pdfUrl }).eq('id', informeId)
 }
 
+export async function listarInformesEmpresa(opts: {
+  limite?: number
+  tipo?: string
+  tecnico?: string
+  cliente?: string
+  desde?: string
+  hasta?: string
+}): Promise<InformeRecord[]> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return []
+
+  let query = supabase
+    .from('informes')
+    .select('*')
+    .eq('empresa_id', usuario.empresa_id)
+    .order('created_at', { ascending: false })
+    .limit(opts.limite ?? 100)
+
+  if (opts.tipo)    query = query.eq('tipo_reporte', opts.tipo)
+  if (opts.tecnico) query = query.ilike('tecnico', `%${opts.tecnico}%`)
+  if (opts.cliente) query = query.ilike('cliente', `%${opts.cliente}%`)
+  if (opts.desde)   query = query.gte('fecha', opts.desde)
+  if (opts.hasta)   query = query.lte('fecha', opts.hasta)
+
+  const { data } = await query
+  return data ?? []
+}
+
 export async function listarHistorialEquipo(equipoId: string, qrCode?: string): Promise<InformeRecord[]> {
   let query = supabase
     .from('informes')
