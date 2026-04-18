@@ -2,35 +2,404 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { listarInformesEmpresa, listarTecnicos, InformeRecord, Usuario } from '@/lib/supabase'
-import { ArrowLeft, FileText, Download, Search, RefreshCw, Filter, X } from 'lucide-react'
+import { listarInformesEmpresa, listarTecnicos, getEmpresaConfig, InformeRecord, Usuario, EmpresaConfig } from '@/lib/supabase'
+import { ArrowLeft, FileText, Download, RefreshCw, Filter, X, BarChart2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
-const TIPOS = [
-  { id: '', label: 'Todos los tipos' },
-  { id: 'ups',          label: 'UPS / Baterías' },
-  { id: 'aire',         label: 'Aires Acondicionados' },
-  { id: 'planta',       label: 'Plantas Eléctricas' },
-  { id: 'fotovoltaico', label: 'Sistema Fotovoltaico' },
-  { id: 'otros',        label: 'Otros' },
-]
+const TIPOS: Record<string, string> = {
+  ups: 'UPS / Baterías', aire: 'Aires Acondicionados',
+  planta: 'Plantas Eléctricas', fotovoltaico: 'Sistema Fotovoltaico', otros: 'Otros',
+}
+const TIPOS_OPT = [{ id: '', label: 'Todos los tipos' }, ...Object.entries(TIPOS).map(([id, label]) => ({ id, label }))]
+
+// ── Generador de PDF ejecutivo ────────────────────────────────
+
+async function generarInformeEjecutivoPDF(opts: {
+  informes: InformeRecord[]
+  empresa: { nombre: string; logo?: string; telefono?: string; email?: string; direccion?: string; ciudad?: string }
+  titulo: string
+  clienteNombre: string
+  intro: string
+  conclusion: string
+  periodo: string
+}) {
+  const { jsPDF } = await import('jspdf')
+  const pdf = new jsPDF('p', 'mm', 'a4')
+  const W = pdf.internal.pageSize.getWidth()
+  const H = pdf.internal.pageSize.getHeight()
+  const margin = 15
+  const fechaHoy = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
+
+  // Colores
+  const NAVY   = [22, 43, 90]   as [number,number,number]
+  const GREEN  = [22, 163, 74]  as [number,number,number]
+  const GRAY   = [100, 100, 100] as [number,number,number]
+  const LGRAY  = [240, 242, 245] as [number,number,number]
+  const WHITE  = [255, 255, 255] as [number,number,number]
+
+  const addPageHeader = (pageNum: number, totalHint = '') => {
+    pdf.setFillColor(...NAVY)
+    pdf.rect(0, 0, W, 14, 'F')
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(...WHITE)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text(opts.empresa.nombre.toUpperCase(), margin, 9)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(opts.titulo, W / 2, 9, { align: 'center' })
+    pdf.text(`Pág. ${pageNum}${totalHint}`, W - margin, 9, { align: 'right' })
+    pdf.setTextColor(0, 0, 0)
+  }
+
+  const addPageFooter = () => {
+    pdf.setFillColor(...LGRAY)
+    pdf.rect(0, H - 10, W, 10, 'F')
+    pdf.setFontSize(7)
+    pdf.setTextColor(...GRAY)
+    pdf.setFont('helvetica', 'normal')
+    const contactParts = [opts.empresa.telefono, opts.empresa.email, opts.empresa.ciudad].filter(Boolean)
+    pdf.text(contactParts.join('  ·  '), margin, H - 4)
+    pdf.text(`Generado el ${fechaHoy}`, W - margin, H - 4, { align: 'right' })
+    pdf.setTextColor(0, 0, 0)
+  }
+
+  // ── PORTADA ──────────────────────────────────────────────────
+  // Fondo superior navy
+  pdf.setFillColor(...NAVY)
+  pdf.rect(0, 0, W, H * 0.45, 'F')
+
+  // Logo empresa
+  if (opts.empresa.logo) {
+    try {
+      const imgW = 55, imgH = 28
+      const imgX = W / 2 - imgW / 2
+      pdf.addImage(opts.empresa.logo, 'JPEG', imgX, 18, imgW, imgH)
+    } catch { /* sin logo */ }
+  }
+
+  // Franja verde separadora
+  pdf.setFillColor(...GREEN)
+  pdf.rect(0, H * 0.45, W, 2.5, 'F')
+
+  // Nombre empresa
+  pdf.setFontSize(10)
+  pdf.setTextColor(...WHITE)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(opts.empresa.nombre.toUpperCase(), W / 2, 56, { align: 'center' })
+
+  // Título
+  pdf.setFontSize(22)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text('INFORME EJECUTIVO', W / 2, 78, { align: 'center' })
+  pdf.setFontSize(15)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('DE MANTENIMIENTO', W / 2, 88, { align: 'center' })
+
+  // Subtítulo tipo equipo
+  const tiposPresentes = [...new Set(opts.informes.map(i => i.tipo_reporte).filter(Boolean))]
+  if (tiposPresentes.length > 0) {
+    pdf.setFontSize(9)
+    pdf.setTextColor(180, 220, 180)
+    pdf.text(tiposPresentes.map(t => TIPOS[t!] ?? t!).join('  ·  '), W / 2, 98, { align: 'center' })
+  }
+
+  // Caja de info cliente
+  const boxY = H * 0.45 + 12
+  pdf.setFillColor(...LGRAY)
+  pdf.roundedRect(margin, boxY, W - margin * 2, 55, 3, 3, 'F')
+
+  pdf.setFontSize(8.5)
+  pdf.setTextColor(...GRAY)
+  pdf.setFont('helvetica', 'bold')
+
+  const col1 = margin + 8
+  const col2 = W / 2 + 4
+  let cy = boxY + 10
+
+  const field = (label: string, value: string, x: number, y: number) => {
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(...GRAY)
+    pdf.text(label, x, y)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(30, 30, 30)
+    pdf.text(value || '—', x, y + 5.5)
+  }
+
+  field('CLIENTE', opts.clienteNombre || 'Todos los clientes', col1, cy)
+  field('PERÍODO', opts.periodo || fechaHoy, col2, cy)
+  cy += 15
+
+  const equiposUnicos = [...new Set(opts.informes.map(i => i.serial).filter(Boolean))]
+  field('N° DE VISITAS', String(opts.informes.length), col1, cy)
+  field('EQUIPOS ATENDIDOS', String(equiposUnicos.length || opts.informes.length), col2, cy)
+  cy += 15
+
+  const tecnicos = [...new Set(opts.informes.map(i => i.tecnico).filter(Boolean))]
+  field('TÉCNICO(S)', tecnicos.slice(0, 3).join(', ') || '—', col1, cy)
+  field('FECHA', fechaHoy, col2, cy)
+
+  addPageFooter()
+  pdf.addPage()
+
+  // ── PÁGINA 2: RESUMEN EJECUTIVO ───────────────────────────────
+  let page = 2
+  addPageHeader(page)
+  let y = 22
+
+  // Título sección
+  pdf.setFillColor(...GREEN)
+  pdf.rect(margin, y, 3, 7, 'F')
+  pdf.setFontSize(12)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(30, 30, 30)
+  pdf.text('RESUMEN EJECUTIVO', margin + 6, y + 5.5)
+  y += 14
+
+  // Texto de presentación
+  if (opts.intro) {
+    pdf.setFontSize(9.5)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(60, 60, 60)
+    const lines = pdf.splitTextToSize(opts.intro, W - margin * 2)
+    pdf.text(lines, margin, y)
+    y += lines.length * 5 + 6
+  }
+
+  // Tarjetas de stats
+  const stats = [
+    { label: 'Total de visitas', val: String(opts.informes.length), color: NAVY },
+    { label: 'Equipos únicos', val: String(equiposUnicos.length || opts.informes.length), color: GREEN },
+    { label: 'Técnicos', val: String(tecnicos.length), color: [80, 80, 180] as [number,number,number] },
+    { label: 'Clientes', val: String([...new Set(opts.informes.map(i => i.cliente).filter(Boolean))].length), color: [160, 80, 20] as [number,number,number] },
+  ]
+  const cardW = (W - margin * 2 - 9) / 4
+  stats.forEach((s, i) => {
+    const cx = margin + i * (cardW + 3)
+    pdf.setFillColor(...s.color)
+    pdf.roundedRect(cx, y, cardW, 20, 2, 2, 'F')
+    pdf.setTextColor(...WHITE)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(16)
+    pdf.text(s.val, cx + cardW / 2, y + 12, { align: 'center' })
+    pdf.setFontSize(7)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(s.label, cx + cardW / 2, y + 17.5, { align: 'center' })
+  })
+  y += 28
+
+  // Tabla resumen de equipos
+  pdf.setFillColor(...GREEN)
+  pdf.rect(margin, y, 3, 7, 'F')
+  pdf.setFontSize(11)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(30, 30, 30)
+  pdf.text('DETALLE DE EQUIPOS ATENDIDOS', margin + 6, y + 5.5)
+  y += 12
+
+  // Cabecera tabla
+  const cols = [
+    { label: 'N° Informe', w: 24 },
+    { label: 'Fecha',      w: 22 },
+    { label: 'Cliente',    w: 38 },
+    { label: 'Equipo',     w: 34 },
+    { label: 'Serial',     w: 28 },
+    { label: 'Técnico',    w: 30 },
+  ]
+  const tableW = cols.reduce((s, c) => s + c.w, 0)
+
+  pdf.setFillColor(...NAVY)
+  pdf.rect(margin, y, tableW, 8, 'F')
+  pdf.setFontSize(7.5)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(...WHITE)
+  let cx = margin
+  cols.forEach(col => {
+    pdf.text(col.label, cx + 2, y + 5.5)
+    cx += col.w
+  })
+  y += 8
+
+  // Filas
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(7.5)
+  let rowColor = false
+
+  for (const inf of opts.informes) {
+    if (y > H - 25) {
+      addPageFooter()
+      pdf.addPage()
+      page++
+      addPageHeader(page)
+      y = 22
+
+      // Repetir cabecera
+      pdf.setFillColor(...NAVY)
+      pdf.rect(margin, y, tableW, 8, 'F')
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(...WHITE)
+      pdf.setFontSize(7.5)
+      cx = margin
+      cols.forEach(col => { pdf.text(col.label, cx + 2, y + 5.5); cx += col.w })
+      y += 8
+      pdf.setFont('helvetica', 'normal')
+    }
+
+    pdf.setFillColor(...(rowColor ? LGRAY : WHITE))
+    pdf.rect(margin, y, tableW, 7, 'F')
+    pdf.setTextColor(30, 30, 30)
+
+    cx = margin
+    const cells = [
+      inf.numero_informe ?? inf.reporte_numero ?? '—',
+      inf.fecha ?? '—',
+      (inf.cliente ?? '—').substring(0, 20),
+      ([inf.marca, inf.modelo].filter(Boolean).join(' ') || '—').substring(0, 18),
+      (inf.serial ?? '—').substring(0, 16),
+      (inf.tecnico ?? '—').substring(0, 16),
+    ]
+    cells.forEach((cell, i) => {
+      pdf.text(String(cell), cx + 2, y + 4.8)
+      cx += cols[i].w
+    })
+
+    // Línea separadora
+    pdf.setDrawColor(220, 220, 220)
+    pdf.setLineWidth(0.1)
+    pdf.line(margin, y + 7, margin + tableW, y + 7)
+
+    y += 7
+    rowColor = !rowColor
+  }
+
+  y += 8
+
+  // ── OBSERVACIONES Y RECOMENDACIONES ──────────────────────────
+  const informesConObs = opts.informes.filter(i => i.observaciones || i.recomendaciones)
+  if (informesConObs.length > 0) {
+    if (y > H - 60) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
+
+    pdf.setFillColor(...GREEN)
+    pdf.rect(margin, y, 3, 7, 'F')
+    pdf.setFontSize(11)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(30, 30, 30)
+    pdf.text('OBSERVACIONES Y RECOMENDACIONES', margin + 6, y + 5.5)
+    y += 12
+
+    for (const inf of informesConObs) {
+      if (y > H - 35) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
+
+      const equipo = [inf.marca, inf.modelo].filter(Boolean).join(' ') || inf.serial || 'Equipo'
+      pdf.setFillColor(...LGRAY)
+      pdf.roundedRect(margin, y, W - margin * 2, 6.5, 1, 1, 'F')
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(...NAVY)
+      pdf.text(`${equipo}  ·  ${inf.cliente ?? ''}  ·  ${inf.fecha ?? ''}`, margin + 3, y + 4.5)
+      y += 8
+
+      if (inf.observaciones) {
+        pdf.setFontSize(7.5)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(...GRAY)
+        pdf.text('Observaciones:', margin + 3, y + 4)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(50, 50, 50)
+        const obs = pdf.splitTextToSize(inf.observaciones, W - margin * 2 - 6)
+        pdf.text(obs, margin + 3, y + 9)
+        y += obs.length * 4.5 + 6
+      }
+      if (inf.recomendaciones) {
+        if (y > H - 30) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
+        pdf.setFontSize(7.5)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(...GRAY)
+        pdf.text('Recomendaciones:', margin + 3, y + 4)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(50, 50, 50)
+        const rec = pdf.splitTextToSize(inf.recomendaciones, W - margin * 2 - 6)
+        pdf.text(rec, margin + 3, y + 9)
+        y += rec.length * 4.5 + 6
+      }
+      y += 4
+    }
+  }
+
+  // ── CONCLUSIONES ──────────────────────────────────────────────
+  if (opts.conclusion) {
+    if (y > H - 55) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
+
+    pdf.setFillColor(...GREEN)
+    pdf.rect(margin, y, 3, 7, 'F')
+    pdf.setFontSize(11)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(30, 30, 30)
+    pdf.text('CONCLUSIONES Y PRÓXIMOS PASOS', margin + 6, y + 5.5)
+    y += 14
+
+    pdf.setFontSize(9.5)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(60, 60, 60)
+    const lines = pdf.splitTextToSize(opts.conclusion, W - margin * 2)
+    pdf.text(lines, margin, y)
+    y += lines.length * 5 + 10
+  }
+
+  // ── FIRMA ─────────────────────────────────────────────────────
+  if (y > H - 45) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
+
+  y += 6
+  pdf.setDrawColor(200, 200, 200)
+  pdf.setLineWidth(0.5)
+  // Línea firma técnico
+  pdf.line(margin, y + 20, margin + 65, y + 20)
+  pdf.setFontSize(8)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setTextColor(...GRAY)
+  pdf.text('Responsable técnico', margin, y + 25)
+  pdf.text(opts.empresa.nombre, margin, y + 30)
+
+  // Línea firma cliente
+  pdf.line(W - margin - 65, y + 20, W - margin, y + 20)
+  pdf.text('Recibido por', W - margin - 65, y + 25)
+  pdf.text(opts.clienteNombre || 'Cliente', W - margin - 65, y + 30)
+
+  addPageFooter()
+
+  // Nombre de archivo
+  const safe = (opts.clienteNombre || 'ejecutivo').replace(/[^a-z0-9]/gi, '_').toLowerCase()
+  const fname = `IE_${safe}_${new Date().toISOString().split('T')[0]}.pdf`
+  pdf.save(fname)
+}
+
+// ── Componente principal ──────────────────────────────────────
 
 export default function InformesPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
 
-  const [informes, setInformes] = useState<InformeRecord[]>([])
-  const [tecnicos, setTecnicos] = useState<Usuario[]>([])
+  const [informes, setInformes]     = useState<InformeRecord[]>([])
+  const [tecnicos, setTecnicos]     = useState<Usuario[]>([])
+  const [empresaConfig, setEmpresaConfig] = useState<EmpresaConfig | null>(null)
   const [loadingData, setLoadingData] = useState(true)
 
   // Filtros
-  const [tipo, setTipo] = useState('')
+  const [tipo,    setTipo]    = useState('')
   const [tecnico, setTecnico] = useState('')
   const [cliente, setCliente] = useState('')
-  const [desde, setDesde] = useState('')
-  const [hasta, setHasta] = useState('')
+  const [desde,   setDesde]   = useState('')
+  const [hasta,   setHasta]   = useState('')
   const [showFilters, setShowFilters] = useState(false)
+
+  // Modal informe ejecutivo
+  const [showModal,    setShowModal]    = useState(false)
+  const [modalTitulo,  setModalTitulo]  = useState('Informe Ejecutivo de Mantenimiento')
+  const [modalCliente, setModalCliente] = useState('')
+  const [modalPeriodo, setModalPeriodo] = useState('')
+  const [modalIntro,   setModalIntro]   = useState('')
+  const [modalConcl,   setModalConcl]   = useState('')
+  const [generating,   setGenerating]   = useState(false)
 
   useEffect(() => {
     if (!loading && !user) { router.push('/login'); return }
@@ -50,10 +419,48 @@ export default function InformesPage() {
     listarTecnicos().then(setTecnicos)
   }, [])
 
-  const limpiarFiltros = () => {
-    setTipo(''); setTecnico(''); setCliente(''); setDesde(''); setHasta('')
+  useEffect(() => {
+    if (user?.empresa_id) {
+      getEmpresaConfig(user.empresa_id).then(setEmpresaConfig)
+    }
+  }, [user])
+
+  // Pre-rellenar modal al abrirlo
+  const abrirModal = () => {
+    setModalCliente(cliente)
+    const parts = []
+    if (desde) parts.push(new Date(desde).toLocaleDateString('es-CO'))
+    if (hasta)  parts.push(new Date(hasta).toLocaleDateString('es-CO'))
+    setModalPeriodo(parts.join(' — '))
+    setShowModal(true)
   }
 
+  const generarEjecutivo = async () => {
+    if (informes.length === 0) return
+    setGenerating(true)
+    try {
+      await generarInformeEjecutivoPDF({
+        informes,
+        empresa: {
+          nombre: empresaConfig?.nombre_comercial || user?.empresa?.nombre || 'Mi Empresa',
+          logo:   empresaConfig?.logo,
+          telefono: empresaConfig?.telefono,
+          email:    empresaConfig?.email_contacto,
+          ciudad:   (empresaConfig as any)?.ciudad,
+        },
+        titulo:       modalTitulo,
+        clienteNombre: modalCliente,
+        intro:        modalIntro,
+        conclusion:   modalConcl,
+        periodo:      modalPeriodo,
+      })
+    } finally {
+      setGenerating(false)
+      setShowModal(false)
+    }
+  }
+
+  const limpiarFiltros = () => { setTipo(''); setTecnico(''); setCliente(''); setDesde(''); setHasta('') }
   const hayFiltros = tipo || tecnico || cliente || desde || hasta
 
   const agrupadosPorCliente = informes.reduce<Record<string, InformeRecord[]>>((acc, inf) => {
@@ -66,14 +473,86 @@ export default function InformesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* ── Modal informe ejecutivo ── */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                <BarChart2 className="w-5 h-5 text-green-600" /> Informe ejecutivo
+              </h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+              <p className="text-xs text-gray-400">
+                Se generará un PDF ejecutivo con los <strong>{informes.length} informe{informes.length !== 1 ? 's' : ''}</strong> actualmente filtrados.
+              </p>
+
+              <div className="space-y-1">
+                <Label>Título del informe</Label>
+                <Input value={modalTitulo} onChange={e => setModalTitulo(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Cliente / Destinatario</Label>
+                  <Input value={modalCliente} onChange={e => setModalCliente(e.target.value)} placeholder="Nombre del cliente" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Período</Label>
+                  <Input value={modalPeriodo} onChange={e => setModalPeriodo(e.target.value)} placeholder="Ej: Enero — Marzo 2026" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>Presentación / Introducción</Label>
+                <textarea
+                  value={modalIntro}
+                  onChange={e => setModalIntro(e.target.value)}
+                  rows={3}
+                  placeholder="Breve descripción del trabajo realizado o contexto del informe…"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Conclusiones y próximos pasos</Label>
+                <textarea
+                  value={modalConcl}
+                  onChange={e => setModalConcl(e.target.value)}
+                  rows={3}
+                  placeholder="Estado general de los equipos, recomendaciones globales, próxima visita…"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+              <Button onClick={() => setShowModal(false)} className="bg-gray-100 text-gray-700 hover:bg-gray-200">
+                Cancelar
+              </Button>
+              <Button
+                onClick={generarEjecutivo}
+                disabled={generating || informes.length === 0}
+                className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+              >
+                {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando…</> : <><Download className="w-4 h-4" /> Generar PDF</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Header ── */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3 flex-wrap">
           <button onClick={() => router.push('/admin')} className="text-gray-500 hover:text-gray-700">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <FileText className="w-5 h-5 text-green-600" />
           <h1 className="text-lg font-semibold text-gray-800">Informes técnicos</h1>
-          <span className="text-sm text-gray-400 ml-1">— {user.empresa?.nombre}</span>
+          <span className="text-sm text-gray-400 hidden sm:inline">— {user.empresa?.nombre}</span>
           <div className="ml-auto flex items-center gap-2">
             <button onClick={cargar} className="text-gray-400 hover:text-gray-600" title="Recargar">
               <RefreshCw className="w-4 h-4" />
@@ -85,51 +564,38 @@ export default function InformesPage() {
               <Filter className="w-4 h-4" />
               Filtros {hayFiltros && `(${[tipo, tecnico, cliente, desde, hasta].filter(Boolean).length})`}
             </Button>
+            <Button
+              onClick={abrirModal}
+              disabled={informes.length === 0}
+              className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 text-sm"
+            >
+              <BarChart2 className="w-4 h-4" /> Informe ejecutivo
+            </Button>
           </div>
         </div>
       </header>
 
-      {/* Panel de filtros */}
+      {/* ── Filtros ── */}
       {showFilters && (
         <div className="bg-white border-b border-gray-100 shadow-sm">
           <div className="max-w-5xl mx-auto px-4 py-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {/* Tipo */}
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Tipo de equipo</label>
-              <select
-                value={tipo}
-                onChange={e => setTipo(e.target.value)}
-                className="w-full h-9 border border-gray-200 rounded-md px-3 text-sm bg-white"
-              >
-                {TIPOS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              <select value={tipo} onChange={e => setTipo(e.target.value)} className="w-full h-9 border border-gray-200 rounded-md px-3 text-sm bg-white">
+                {TIPOS_OPT.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </div>
-
-            {/* Técnico */}
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Técnico</label>
-              <select
-                value={tecnico}
-                onChange={e => setTecnico(e.target.value)}
-                className="w-full h-9 border border-gray-200 rounded-md px-3 text-sm bg-white"
-              >
+              <select value={tecnico} onChange={e => setTecnico(e.target.value)} className="w-full h-9 border border-gray-200 rounded-md px-3 text-sm bg-white">
                 <option value="">Todos los técnicos</option>
                 {tecnicos.map(t => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
               </select>
             </div>
-
-            {/* Cliente */}
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Cliente</label>
-              <Input
-                value={cliente}
-                onChange={e => setCliente(e.target.value)}
-                placeholder="Buscar por cliente…"
-                className="h-9 text-sm"
-              />
+              <Input value={cliente} onChange={e => setCliente(e.target.value)} placeholder="Buscar por cliente…" className="h-9 text-sm" />
             </div>
-
-            {/* Rango de fechas */}
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Desde</label>
               <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 text-sm" />
@@ -138,7 +604,6 @@ export default function InformesPage() {
               <label className="text-xs text-gray-500 mb-1 block">Hasta</label>
               <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="h-9 text-sm" />
             </div>
-
             <div className="flex items-end">
               {hayFiltros && (
                 <button onClick={limpiarFiltros} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700">
@@ -152,13 +617,13 @@ export default function InformesPage() {
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
 
-        {/* Resumen */}
+        {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Total informes', value: informes.length },
-            { label: 'Con PDF guardado', value: informes.filter(i => i.pdf_url).length },
+            { label: 'Total informes',    value: informes.length },
+            { label: 'Con PDF guardado',  value: informes.filter(i => i.pdf_url).length },
             { label: 'Clientes distintos', value: Object.keys(agrupadosPorCliente).length },
-            { label: 'Técnicos activos', value: [...new Set(informes.map(i => i.tecnico).filter(Boolean))].length },
+            { label: 'Técnicos activos',  value: [...new Set(informes.map(i => i.tecnico).filter(Boolean))].length },
           ].map(stat => (
             <div key={stat.label} className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3">
               <p className="text-2xl font-bold text-gray-800">{stat.value}</p>
@@ -167,7 +632,7 @@ export default function InformesPage() {
           ))}
         </div>
 
-        {/* Lista */}
+        {/* Tabla */}
         {loadingData ? (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-sm text-gray-400">
             Cargando informes…
@@ -178,68 +643,45 @@ export default function InformesPage() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            {/* Cabecera tabla */}
             <div className="hidden sm:grid grid-cols-[1fr_1.2fr_1fr_0.7fr_0.7fr_auto] gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              <span>N° / Fecha</span>
-              <span>Cliente</span>
-              <span>Técnico</span>
-              <span>Equipo</span>
-              <span>Tipo</span>
-              <span>PDF</span>
+              <span>N° / Fecha</span><span>Cliente</span><span>Técnico</span><span>Equipo</span><span>Tipo</span><span>PDF</span>
             </div>
-
             <div className="divide-y divide-gray-50">
               {informes.map(inf => (
-                <div
-                  key={inf.id}
-                  className="grid grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr_0.7fr_0.7fr_auto] gap-1 sm:gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
-                >
-                  {/* N° / Fecha */}
+                <div key={inf.id} className="grid grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr_0.7fr_0.7fr_auto] gap-1 sm:gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
                   <div>
                     <p className="text-xs font-bold text-blue-700">{inf.numero_informe ?? inf.reporte_numero ?? '—'}</p>
                     <p className="text-[11px] text-gray-400">{inf.fecha}</p>
                   </div>
-
-                  {/* Cliente */}
                   <div>
                     <p className="text-sm font-medium text-gray-800 truncate">{inf.cliente || '—'}</p>
                     {inf.serial && <p className="text-[11px] text-gray-400">S/N: {inf.serial}</p>}
                   </div>
-
-                  {/* Técnico */}
                   <p className="text-sm text-gray-700 truncate self-center">{inf.tecnico ?? '—'}</p>
-
-                  {/* Equipo */}
                   <div className="self-center">
                     <p className="text-xs text-gray-700 truncate">{[inf.marca, inf.modelo].filter(Boolean).join(' ') || '—'}</p>
                     {inf.capacidad && <p className="text-[11px] text-gray-400">{inf.capacidad}</p>}
                   </div>
-
-                  {/* Tipo */}
                   <p className="text-xs text-gray-500 capitalize self-center">{inf.tipo_reporte ?? '—'}</p>
-
-                  {/* PDF */}
                   <div className="self-center">
                     {inf.pdf_url ? (
-                      <a
-                        href={inf.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2.5 py-1 rounded-lg transition-colors font-medium"
-                        title="Descargar PDF"
-                      >
+                      <a href={inf.pdf_url} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2.5 py-1 rounded-lg transition-colors font-medium">
                         <Download className="w-3.5 h-3.5" /> PDF
                       </a>
-                    ) : (
-                      <span className="text-[11px] text-gray-300">—</span>
-                    )}
+                    ) : <span className="text-[11px] text-gray-300">—</span>}
                   </div>
                 </div>
               ))}
             </div>
-
-            <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 text-right">
-              {informes.length} resultado{informes.length !== 1 ? 's' : ''}
+            <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 flex justify-between items-center">
+              <span>{informes.length} resultado{informes.length !== 1 ? 's' : ''}</span>
+              <button
+                onClick={abrirModal}
+                className="text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
+              >
+                <BarChart2 className="w-3.5 h-3.5" /> Generar informe ejecutivo
+              </button>
             </div>
           </div>
         )}
