@@ -141,9 +141,12 @@ export async function registrarConLicencia(
 
 export async function buscarClientes(query: string): Promise<ClienteRecord[]> {
   if (!query.trim()) return []
+  const usuario = await getUsuarioActual()
+  if (!usuario) return []
   const { data } = await supabase
     .from('clientes')
     .select('*')
+    .eq('empresa_id', usuario.empresa_id)
     .ilike('company', `%${query}%`)
     .limit(8)
   return data ?? []
@@ -166,9 +169,12 @@ export async function guardarCliente(data: Omit<ClienteRecord, 'id' | 'empresa_i
 
 export async function buscarEquipos(query: string): Promise<EquipoRecord[]> {
   if (!query.trim()) return []
+  const usuario = await getUsuarioActual()
+  if (!usuario) return []
   const { data } = await supabase
     .from('equipos')
     .select('*, clientes(company, contact, address, email, city, phone)')
+    .eq('empresa_id', usuario.empresa_id)
     .ilike('serial', `%${query}%`)
     .limit(8)
 
@@ -376,4 +382,15 @@ export async function validarFormToken(tokenId: string): Promise<{ empresaId: st
     .single()
   if (!data) return null
   return { empresaId: data.empresa_id, empresa: data.empresa as Empresa, token: data as FormToken }
+}
+
+// ── Consecutivos de informes por empresa y tipo ───────────────
+
+export async function siguienteNumeroInforme(empresaId: string, tipoReporte: string): Promise<number> {
+  const { data, error } = await supabase.rpc('siguiente_numero_informe', {
+    p_empresa_id: empresaId,
+    p_tipo: tipoReporte,
+  })
+  if (error) { console.error('siguienteNumeroInforme error:', error); return 1 }
+  return (data as number) ?? 1
 }

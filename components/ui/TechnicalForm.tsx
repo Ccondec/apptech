@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
-import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
+import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, siguienteNumeroInforme, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
 import AireParams from './AireParams'
 import PlantaParams from './PlantaParams'
 import FotovoltaicoParams from './FotovoltaicoParams'
@@ -948,9 +948,13 @@ const ServiceTypeSection = ({ selectedServices, onServiceChange }: { selectedSer
 };
 
 // Main Component with optimizations
-const fmtReportNum = (n: number) => {
-  const yy = String(new Date().getFullYear()).slice(-2);
-  return `${yy}-${String(n).padStart(4, '0')}`;
+const TIPO_PREFIX: Record<string, string> = {
+  ups: 'UPS', aire: 'AIR', planta: 'PLT', fotovoltaico: 'FTV', otros: 'OTR',
+}
+
+const fmtReportNum = (n: number, tipo = 'ups') => {
+  const prefix = TIPO_PREFIX[tipo] ?? 'RPT'
+  return `${prefix}-${String(n).padStart(4, '0')}`
 };
 
 const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { technician: string; empresaId?: string; onLogout?: () => void; externalToken?: string }) => {
@@ -1240,8 +1244,19 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
     const capacity = String(formData.capacity          ?? '').trim()
     const location = String(formData.equipmentUbicacion ?? formData.equipmentLocation ?? '').trim()
     const client   = String(formData.clientCompany     ?? '').trim()
-    const repNum   = fmtReportNum(reportNumber)
     const fecha    = new Date().toLocaleDateString('es-CO')
+
+    // Obtener número consecutivo atómico desde la BD (solo usuarios autenticados)
+    let activeReportNum = reportNumber
+    if (!externalToken && empresaId) {
+      try {
+        const next = await siguienteNumeroInforme(empresaId, formData.reportType ?? 'ups')
+        activeReportNum = next
+        setReportNumber(next)
+        localStorage.setItem('apptech_report_number', String(next))
+      } catch { /* fallback al número local */ }
+    }
+    const repNum = fmtReportNum(activeReportNum, formData.reportType ?? 'ups')
     const qrCodeId = String(formData.qrCode ?? '').trim()
     const tecnico  = String(formData.technicianName ?? technician).trim()
 
@@ -1344,7 +1359,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
       pdf.setTextColor(100, 100, 100); // Gray color
       
       // Left: Report number and date
-      const reportInfo = `Reporte N° ${fmtReportNum(reportNumber)} | ${currentDate}`;
+      const reportInfo = `Reporte N° ${repNum} | ${currentDate}`;
       pdf.text(reportInfo, margin, footerY);
       
       // Center: Company name
@@ -1420,7 +1435,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
     pdf.setFontSize(9);
     pdf.setTextColor(200, 0, 0);
     pdf.setFont('helvetica', 'bold');
-    pdf.text(`N° Reporte: ${fmtReportNum(reportNumber)}`, pageWidth / 2, yPosition + 15, { align: 'center' });
+    pdf.text(`N° Reporte: ${repNum}`, pageWidth / 2, yPosition + 15, { align: 'center' });
     pdf.setTextColor(0, 0, 0);
 
     pdf.setFontSize(8);
@@ -2246,7 +2261,7 @@ yPosition += 8;
     pdf.text(`ID: ${formData.technicianId || ''}`, techSignatureX, yPosition + 45);
 
     // Generate filename and save
-    const filename = `RT_${fmtReportNum(reportNumber)}_${new Date().toISOString().split('T')[0]}.pdf`;
+    const filename = `RT_${repNum}_${new Date().toISOString().split('T')[0]}.pdf`;
     
     // Add footer to all pages
     const totalPages = (pdf.internal as any).getNumberOfPages ? (pdf.internal as any).getNumberOfPages() : pdf.internal.pages.length - 1;
@@ -2386,9 +2401,7 @@ yPosition += 8;
     
     try {
       await generatePDF();
-      const nextReport = reportNumber + 1;
-      setReportNumber(nextReport);
-      localStorage.setItem('apptech_report_number', String(nextReport));
+      // El número consecutivo ya fue asignado atómicamente por la BD en buildPDF
 
       // Limpiar todo el formulario, conservar solo técnico
       setFormData((prev: FormData) => ({
@@ -2464,7 +2477,7 @@ yPosition += 8;
                       onClick={() => setIsEditingReportNumber(true)}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded flex items-center transition-colors"
                     >
-                      <span className="font-medium text-red-500">{fmtReportNum(reportNumber)}</span>
+                      <span className="font-medium text-red-500">{fmtReportNum(reportNumber, formData.reportType ?? 'ups')}</span>
                       <Pen className="w-3 h-3 ml-1 text-gray-500" />
                     </div>
                   )}
