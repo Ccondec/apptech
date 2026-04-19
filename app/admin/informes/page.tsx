@@ -235,32 +235,33 @@ async function generarInformeEjecutivoPDF(opts: {
       drawTableHeader(); y += 8
     }
 
-    // Fondo alternado fila
-    pdf.setFillColor(...(rowAlt ? [232, 235, 240] as [number,number,number] : WHITE))
-    pdf.rect(margin, y, tableW, rowH, 'F')
-
-    // Celda recomendaciones: fondo ámbar si hay rec, verde muy suave si solo obs
+    // Fondo fila completa: ámbar suave si hay rec, verde suave si solo obs, alternado si nada
     if (hasRec) {
       pdf.setFillColor(255, 237, 213)
-      pdf.rect(margin + tableW - cols[5].w, y, cols[5].w, rowH, 'F')
     } else if (hasObs) {
       pdf.setFillColor(220, 252, 231)
-      pdf.rect(margin + tableW - cols[5].w, y, cols[5].w, rowH, 'F')
+    } else {
+      pdf.setFillColor(...(rowAlt ? [232, 235, 240] as [number,number,number] : WHITE))
     }
+    pdf.rect(margin, y, tableW, rowH, 'F')
 
     // Borde izquierdo de color (3mm)
     if (hasRec) {
-      pdf.setFillColor(217, 119, 6)   // ámbar
+      pdf.setFillColor(217, 119, 6)    // ámbar
     } else if (hasObs) {
-      pdf.setFillColor(...GREEN)       // verde
+      pdf.setFillColor(...GREEN)        // verde
     } else {
-      pdf.setFillColor(200, 200, 200) // gris neutro
+      pdf.setFillColor(200, 200, 200)  // gris neutro
     }
     pdf.rect(margin, y, 3, rowH, 'F')
 
-    // Texto columnas info
+    // Posición Y centrada verticalmente para todas las celdas
+    const textStartY = y + rowH / 2 - (recLines.length * 4) / 2 + 2.5
+
+    // Texto columnas info — centrado verticalmente igual que rec
     const midY = y + rowH / 2 + 2
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(30, 30, 30)
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5)
+    if (hasRec) { pdf.setTextColor(120, 53, 15) } else { pdf.setTextColor(30, 30, 30) }
     const infoCells = [
       inf.numero_informe ?? inf.reporte_numero ?? '—',
       inf.fecha ?? '—',
@@ -274,14 +275,14 @@ async function generarInformeEjecutivoPDF(opts: {
       cx += cols[i].w
     })
 
-    // Texto recomendaciones / observaciones en la última columna
+    // Texto recomendaciones / observaciones — centrado verticalmente
     const recX = margin + tableW - cols[5].w + 2
     if (hasRec) {
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(120, 53, 15)
-      pdf.text(recLines, recX, y + rowH / 2 - (recLines.length * 4) / 2 + 2.5)
+      pdf.text(recLines, recX, textStartY)
     } else if (hasObs) {
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(22, 101, 52)
-      pdf.text(recLines, recX, y + rowH / 2 - (recLines.length * 4) / 2 + 2.5)
+      pdf.text(recLines, recX, textStartY)
     } else {
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(180, 180, 180)
       pdf.text('—', recX, midY)
