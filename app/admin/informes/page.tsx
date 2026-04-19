@@ -63,80 +63,81 @@ async function generarInformeEjecutivoPDF(opts: {
     pdf.setTextColor(0, 0, 0)
   }
 
-  // ── PORTADA ──────────────────────────────────────────────────
-  // Fondo superior navy
-  pdf.setFillColor(...NAVY)
-  pdf.rect(0, 0, W, H * 0.45, 'F')
+  // ── PORTADA — página completa ────────────────────────────────
+  const equiposUnicos = [...new Set(opts.informes.map(i => i.serial).filter(Boolean))]
+  const clientes      = [...new Set(opts.informes.map(i => i.cliente).filter(Boolean))]
+  const tecnicos      = [...new Set(opts.informes.map(i => i.tecnico).filter(Boolean))]
+  const tiposPresentes = [...new Set(opts.informes.map(i => i.tipo_reporte).filter(Boolean))]
 
-  // Logo empresa
+  // Fondo navy página completa
+  pdf.setFillColor(...NAVY)
+  pdf.rect(0, 0, W, H, 'F')
+
+  // Franja verde en la parte superior (acento)
+  pdf.setFillColor(...GREEN)
+  pdf.rect(0, 0, W, 4, 'F')
+
+  // Logo centrado en la parte superior
   if (opts.empresa.logo) {
     try {
-      const imgW = 55, imgH = 28
-      const imgX = W / 2 - imgW / 2
-      pdf.addImage(opts.empresa.logo, 'JPEG', imgX, 18, imgW, imgH)
+      pdf.addImage(opts.empresa.logo, 'JPEG', W / 2 - 30, 18, 60, 30)
     } catch { /* sin logo */ }
   }
 
-  // Franja verde separadora
-  pdf.setFillColor(...GREEN)
-  pdf.rect(0, H * 0.45, W, 2.5, 'F')
-
   // Nombre empresa
-  pdf.setFontSize(10)
-  pdf.setTextColor(...WHITE)
-  pdf.setFont('helvetica', 'bold')
-  pdf.text(opts.empresa.nombre.toUpperCase(), W / 2, 56, { align: 'center' })
+  pdf.setFontSize(10); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...WHITE)
+  pdf.text(opts.empresa.nombre.toUpperCase(), W / 2, 58, { align: 'center' })
 
-  // Título
-  pdf.setFontSize(22)
-  pdf.setFont('helvetica', 'bold')
-  pdf.text('INFORME EJECUTIVO', W / 2, 78, { align: 'center' })
-  pdf.setFontSize(15)
-  pdf.setFont('helvetica', 'normal')
-  pdf.text('DE MANTENIMIENTO', W / 2, 88, { align: 'center' })
+  // Línea decorativa central
+  pdf.setDrawColor(...GREEN); pdf.setLineWidth(0.5)
+  pdf.line(W / 2 - 25, 64, W / 2 + 25, 64)
 
-  // Subtítulo tipo equipo
-  const tiposPresentes = [...new Set(opts.informes.map(i => i.tipo_reporte).filter(Boolean))]
+  // Título grande centrado en la página
+  pdf.setFontSize(28); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...WHITE)
+  pdf.text('INFORME', W / 2, H * 0.42, { align: 'center' })
+  pdf.setFontSize(28)
+  pdf.text('EJECUTIVO', W / 2, H * 0.42 + 12, { align: 'center' })
+  pdf.setFontSize(13); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(180, 210, 180)
+  pdf.text('DE MANTENIMIENTO', W / 2, H * 0.42 + 22, { align: 'center' })
+
+  // Tipos de equipo
   if (tiposPresentes.length > 0) {
-    pdf.setFontSize(9)
-    pdf.setTextColor(180, 220, 180)
-    pdf.text(tiposPresentes.map(t => TIPOS[t!] ?? t!).join('  ·  '), W / 2, 98, { align: 'center' })
+    pdf.setFontSize(8.5); pdf.setTextColor(140, 180, 140)
+    pdf.text(tiposPresentes.map(t => TIPOS[t!] ?? t!).join('  ·  '), W / 2, H * 0.42 + 31, { align: 'center' })
   }
 
-  // Caja de info cliente
-  const boxY = H * 0.45 + 12
-  pdf.setFillColor(...LGRAY)
-  pdf.roundedRect(margin, boxY, W - margin * 2, 55, 3, 3, 'F')
+  // ── Tarjeta gris en la parte inferior ────────────────────────
+  const cardH  = 62
+  const cardY  = H - cardH - 8
+  const col1   = margin + 8
+  const col2   = W / 2 + 4
 
-  pdf.setFontSize(8.5)
-  pdf.setTextColor(...GRAY)
-  pdf.setFont('helvetica', 'bold')
+  pdf.setFillColor(230, 233, 240)
+  pdf.roundedRect(margin, cardY, W - margin * 2, cardH, 3, 3, 'F')
 
-  const col1 = margin + 8
-  const col2 = W / 2 + 4
-  let cy = boxY + 10
+  // Franja verde izquierda en la tarjeta
+  pdf.setFillColor(...GREEN)
+  pdf.roundedRect(margin, cardY, 3, cardH, 1, 1, 'F')
 
   const field = (label: string, value: string, x: number, y: number) => {
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(...GRAY)
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7); pdf.setTextColor(...GRAY)
     pdf.text(label, x, y)
-    pdf.setFont('helvetica', 'normal')
-    pdf.setTextColor(30, 30, 30)
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(20, 20, 20)
     pdf.text(value || '—', x, y + 5.5)
   }
 
-  const equiposUnicos = [...new Set(opts.informes.map(i => i.serial).filter(Boolean))]
+  let cy = cardY + 11
   field('PERÍODO', opts.periodo || fechaHoy, col1, cy)
   field('FECHA DE EMISIÓN', fechaHoy, col2, cy)
-  cy += 15
+  cy += 14
 
   field('N° DE VISITAS', String(opts.informes.length), col1, cy)
   field('EQUIPOS ATENDIDOS', String(equiposUnicos.length || opts.informes.length), col2, cy)
-  cy += 15
+  cy += 14
 
-  const clientes = [...new Set(opts.informes.map(i => i.cliente).filter(Boolean))]
-  field('CLIENTES', clientes.slice(0, 3).join(', ') || '—', col1, cy)
-  field('CON RECOMENDACIONES', String(opts.informes.filter(i => i.recomendaciones).length), col2, cy)
+  // Personal técnico en la última fila
+  field('PERSONAL TÉCNICO', tecnicos.join('  ·  ') || '—', col1, cy)
+  field('CLIENTES', clientes.slice(0, 3).join(', ') || '—', col2, cy)
 
   addPageFooter()
   pdf.addPage()
