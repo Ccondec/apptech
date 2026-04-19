@@ -285,8 +285,9 @@ export async function listarInformesEmpresa(opts: {
   if (opts.tipo)    query = query.eq('tipo_reporte', opts.tipo)
   if (opts.tecnico) query = query.ilike('tecnico', `%${opts.tecnico}%`)
   if (opts.cliente) query = query.ilike('cliente', `%${opts.cliente}%`)
-  if (opts.desde)   query = query.gte('fecha', opts.desde)
-  if (opts.hasta)   query = query.lte('fecha', opts.hasta)
+  // Filtrar por created_at (ISO) en lugar de fecha (string localizado)
+  if (opts.desde)   query = query.gte('created_at', `${opts.desde}T00:00:00`)
+  if (opts.hasta)   query = query.lte('created_at', `${opts.hasta}T23:59:59`)
 
   const { data } = await query
   return data ?? []
