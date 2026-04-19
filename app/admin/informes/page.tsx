@@ -277,15 +277,11 @@ async function generarInformeEjecutivoPDF(opts: {
     // Texto recomendaciones / observaciones en la última columna
     const recX = margin + tableW - cols[5].w + 2
     if (hasRec) {
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(6.5); pdf.setTextColor(154, 52, 18)
-      pdf.text('⚠ REC.', recX, y + 4.5)
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(120, 53, 15)
-      pdf.text(recLines, recX, y + 9)
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(120, 53, 15)
+      pdf.text(recLines, recX, y + rowH / 2 - (recLines.length * 4.5) / 2 + 3)
     } else if (hasObs) {
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(6.5); pdf.setTextColor(21, 128, 61)
-      pdf.text('OBS.', recX, y + 4.5)
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(22, 101, 52)
-      pdf.text(recLines, recX, y + 9)
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(22, 101, 52)
+      pdf.text(recLines, recX, y + rowH / 2 - (recLines.length * 4.5) / 2 + 3)
     } else {
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(180, 180, 180)
       pdf.text('—', recX, midY)
