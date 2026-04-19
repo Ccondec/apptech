@@ -18,7 +18,7 @@ const TIPOS_OPT = [{ id: '', label: 'Todos los tipos' }, ...Object.entries(TIPOS
 
 async function generarInformeEjecutivoPDF(opts: {
   informes: InformeRecord[]
-  empresa: { nombre: string; logo?: string; telefono?: string; email?: string; ciudad?: string }
+  empresa: { nombre: string; logo?: string; telefono?: string; email?: string; direccion?: string; ciudad?: string }
   titulo: string
   intro: string
   conclusion: string
@@ -29,221 +29,346 @@ async function generarInformeEjecutivoPDF(opts: {
   const W = pdf.internal.pageSize.getWidth()
   const H = pdf.internal.pageSize.getHeight()
   const margin = 15
-  const cw = W - margin * 2
   const fechaHoy = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
 
-  const NAVY  = [22,  43,  90]  as [number,number,number]
-  const GREEN = [22,  163, 74]  as [number,number,number]
-  const GRAY  = [110, 110, 110] as [number,number,number]
-  const LGRAY = [240, 242, 245] as [number,number,number]
-  const WHITE = [255, 255, 255] as [number,number,number]
-  const AMBER = [217, 119, 6]   as [number,number,number]
+  // Colores
+  const NAVY   = [22, 43, 90]   as [number,number,number]
+  const GREEN  = [22, 163, 74]  as [number,number,number]
+  const GRAY   = [100, 100, 100] as [number,number,number]
+  const LGRAY  = [240, 242, 245] as [number,number,number]
+  const WHITE  = [255, 255, 255] as [number,number,number]
 
-  let page = 1
-
-  const addHeader = () => {
+  const addPageHeader = (pageNum: number, totalHint = '') => {
     pdf.setFillColor(...NAVY)
     pdf.rect(0, 0, W, 14, 'F')
-    pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...WHITE)
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(...WHITE)
+    pdf.setFont('helvetica', 'bold')
     pdf.text(opts.empresa.nombre.toUpperCase(), margin, 9)
     pdf.setFont('helvetica', 'normal')
     pdf.text(opts.titulo, W / 2, 9, { align: 'center' })
-    pdf.text(`Pág. ${page}`, W - margin, 9, { align: 'right' })
+    pdf.text(`Pág. ${pageNum}${totalHint}`, W - margin, 9, { align: 'right' })
     pdf.setTextColor(0, 0, 0)
   }
 
-  const addFooter = () => {
+  const addPageFooter = () => {
     pdf.setFillColor(...LGRAY)
     pdf.rect(0, H - 10, W, 10, 'F')
-    pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...GRAY)
-    const parts = [opts.empresa.telefono, opts.empresa.email, opts.empresa.ciudad].filter(Boolean)
-    pdf.text(parts.join('  ·  '), margin, H - 4)
+    pdf.setFontSize(7)
+    pdf.setTextColor(...GRAY)
+    pdf.setFont('helvetica', 'normal')
+    const contactParts = [opts.empresa.telefono, opts.empresa.email, opts.empresa.ciudad].filter(Boolean)
+    pdf.text(contactParts.join('  ·  '), margin, H - 4)
     pdf.text(`Generado el ${fechaHoy}`, W - margin, H - 4, { align: 'right' })
     pdf.setTextColor(0, 0, 0)
   }
 
-  const newPage = () => {
-    addFooter(); pdf.addPage(); page++; addHeader()
-    return 22
-  }
-
-  const sectionTitle = (title: string, y: number) => {
-    pdf.setFillColor(...GREEN)
-    pdf.rect(margin, y, 3, 7, 'F')
-    pdf.setFontSize(11); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(30, 30, 30)
-    pdf.text(title, margin + 6, y + 5.5)
-    return y + 13
-  }
-
   // ── PORTADA ──────────────────────────────────────────────────
+  // Fondo superior navy
   pdf.setFillColor(...NAVY)
-  pdf.rect(0, 0, W, H * 0.44, 'F')
+  pdf.rect(0, 0, W, H * 0.45, 'F')
 
+  // Logo empresa
   if (opts.empresa.logo) {
-    try { pdf.addImage(opts.empresa.logo, 'JPEG', W / 2 - 27, 16, 54, 27) } catch { /* sin logo */ }
+    try {
+      const imgW = 55, imgH = 28
+      const imgX = W / 2 - imgW / 2
+      pdf.addImage(opts.empresa.logo, 'JPEG', imgX, 18, imgW, imgH)
+    } catch { /* sin logo */ }
   }
 
+  // Franja verde separadora
   pdf.setFillColor(...GREEN)
-  pdf.rect(0, H * 0.44, W, 2.5, 'F')
+  pdf.rect(0, H * 0.45, W, 2.5, 'F')
 
-  pdf.setFontSize(10); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...WHITE)
-  pdf.text(opts.empresa.nombre.toUpperCase(), W / 2, 54, { align: 'center' })
-  pdf.setFontSize(24); pdf.text('INFORME EJECUTIVO', W / 2, 76, { align: 'center' })
-  pdf.setFontSize(14); pdf.setFont('helvetica', 'normal')
-  pdf.text('DE MANTENIMIENTO', W / 2, 86, { align: 'center' })
+  // Nombre empresa
+  pdf.setFontSize(10)
+  pdf.setTextColor(...WHITE)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(opts.empresa.nombre.toUpperCase(), W / 2, 56, { align: 'center' })
 
+  // Título
+  pdf.setFontSize(22)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text('INFORME EJECUTIVO', W / 2, 78, { align: 'center' })
+  pdf.setFontSize(15)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('DE MANTENIMIENTO', W / 2, 88, { align: 'center' })
+
+  // Subtítulo tipo equipo
   const tiposPresentes = [...new Set(opts.informes.map(i => i.tipo_reporte).filter(Boolean))]
-  if (tiposPresentes.length) {
-    pdf.setFontSize(9); pdf.setTextColor(180, 220, 180)
-    pdf.text(tiposPresentes.map(t => TIPOS[t!] ?? t!).join('  ·  '), W / 2, 97, { align: 'center' })
+  if (tiposPresentes.length > 0) {
+    pdf.setFontSize(9)
+    pdf.setTextColor(180, 220, 180)
+    pdf.text(tiposPresentes.map(t => TIPOS[t!] ?? t!).join('  ·  '), W / 2, 98, { align: 'center' })
   }
 
-  // Caja resumen en portada
-  const equiposUnicos = [...new Set(opts.informes.map(i => i.serial).filter(Boolean))]
-  const boxY = H * 0.44 + 10
+  // Caja de info cliente
+  const boxY = H * 0.45 + 12
   pdf.setFillColor(...LGRAY)
-  pdf.roundedRect(margin, boxY, cw, 42, 3, 3, 'F')
+  pdf.roundedRect(margin, boxY, W - margin * 2, 55, 3, 3, 'F')
 
-  const col1 = margin + 8, col2 = W / 2 + 4
-  const infoField = (label: string, val: string, x: number, y: number) => {
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(...GRAY)
+  pdf.setFontSize(8.5)
+  pdf.setTextColor(...GRAY)
+  pdf.setFont('helvetica', 'bold')
+
+  const col1 = margin + 8
+  const col2 = W / 2 + 4
+  let cy = boxY + 10
+
+  const field = (label: string, value: string, x: number, y: number) => {
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(...GRAY)
     pdf.text(label, x, y)
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(25, 25, 25)
-    pdf.text(val || '—', x, y + 6)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(30, 30, 30)
+    pdf.text(value || '—', x, y + 5.5)
   }
-  infoField('PERÍODO', opts.periodo || fechaHoy, col1, boxY + 10)
-  infoField('FECHA DE EMISIÓN', fechaHoy, col2, boxY + 10)
-  infoField('N° DE VISITAS', String(opts.informes.length), col1, boxY + 26)
-  infoField('EQUIPOS ATENDIDOS', String(equiposUnicos.length || opts.informes.length), col2, boxY + 26)
 
-  addFooter()
-  pdf.addPage(); page = 2; addHeader()
+  const equiposUnicos = [...new Set(opts.informes.map(i => i.serial).filter(Boolean))]
+  field('PERÍODO', opts.periodo || fechaHoy, col1, cy)
+  field('FECHA DE EMISIÓN', fechaHoy, col2, cy)
+  cy += 15
+
+  field('N° DE VISITAS', String(opts.informes.length), col1, cy)
+  field('EQUIPOS ATENDIDOS', String(equiposUnicos.length || opts.informes.length), col2, cy)
+  cy += 15
+
+  const clientes = [...new Set(opts.informes.map(i => i.cliente).filter(Boolean))]
+  field('CLIENTES', clientes.slice(0, 3).join(', ') || '—', col1, cy)
+  field('CON RECOMENDACIONES', String(opts.informes.filter(i => i.recomendaciones).length), col2, cy)
+
+  addPageFooter()
+  pdf.addPage()
+
+  // ── PÁGINA 2: RESUMEN EJECUTIVO ───────────────────────────────
+  let page = 2
+  addPageHeader(page)
   let y = 22
 
-  // ── INTRODUCCIÓN + STATS ─────────────────────────────────────
-  y = sectionTitle('RESUMEN EJECUTIVO', y)
+  // Título sección
+  pdf.setFillColor(...GREEN)
+  pdf.rect(margin, y, 3, 7, 'F')
+  pdf.setFontSize(12)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(30, 30, 30)
+  pdf.text('RESUMEN EJECUTIVO', margin + 6, y + 5.5)
+  y += 14
 
+  // Texto de presentación
   if (opts.intro) {
-    pdf.setFontSize(9.5); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(60, 60, 60)
-    const lines = pdf.splitTextToSize(opts.intro, cw)
+    pdf.setFontSize(9.5)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(60, 60, 60)
+    const lines = pdf.splitTextToSize(opts.intro, W - margin * 2)
     pdf.text(lines, margin, y)
-    y += lines.length * 5.2 + 6
+    y += lines.length * 5 + 6
   }
 
-  // Tarjetas de cifras clave
-  const clientes = [...new Set(opts.informes.map(i => i.cliente).filter(Boolean))]
-  const conRec    = opts.informes.filter(i => i.recomendaciones).length
-  const cards = [
-    { label: 'Visitas realizadas',     val: String(opts.informes.length),                           color: NAVY  },
-    { label: 'Equipos únicos',         val: String(equiposUnicos.length || opts.informes.length),   color: GREEN },
-    { label: 'Clientes',               val: String(clientes.length),                                color: [80, 80, 180] as [number,number,number] },
-    { label: 'Con recomendaciones',    val: String(conRec),                                          color: AMBER },
+  // Tarjetas de stats
+  const stats = [
+    { label: 'Total de visitas',       val: String(opts.informes.length),                                                          color: NAVY },
+    { label: 'Equipos únicos',         val: String(equiposUnicos.length || opts.informes.length),                                  color: GREEN },
+    { label: 'Con recomendaciones',    val: String(opts.informes.filter(i => i.recomendaciones).length),                          color: [217, 119, 6] as [number,number,number] },
+    { label: 'Clientes',               val: String([...new Set(opts.informes.map(i => i.cliente).filter(Boolean))].length),        color: [160, 80, 20] as [number,number,number] },
   ]
-  const cw4 = (cw - 9) / 4
-  cards.forEach((c, i) => {
-    const cx = margin + i * (cw4 + 3)
-    pdf.setFillColor(...c.color)
-    pdf.roundedRect(cx, y, cw4, 20, 2, 2, 'F')
-    pdf.setTextColor(...WHITE); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(17)
-    pdf.text(c.val, cx + cw4 / 2, y + 12, { align: 'center' })
-    pdf.setFontSize(7); pdf.setFont('helvetica', 'normal')
-    pdf.text(c.label, cx + cw4 / 2, y + 17.5, { align: 'center' })
+  const cardW = (W - margin * 2 - 9) / 4
+  stats.forEach((s, i) => {
+    const cx = margin + i * (cardW + 3)
+    pdf.setFillColor(...s.color)
+    pdf.roundedRect(cx, y, cardW, 20, 2, 2, 'F')
+    pdf.setTextColor(...WHITE)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(16)
+    pdf.text(s.val, cx + cardW / 2, y + 12, { align: 'center' })
+    pdf.setFontSize(7)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(s.label, cx + cardW / 2, y + 17.5, { align: 'center' })
   })
   y += 28
 
-  // ── CARDS POR EQUIPO ──────────────────────────────────────────
-  if (y > H - 60) y = newPage()
-  y = sectionTitle('ESTADO Y RECOMENDACIONES POR EQUIPO', y)
+  // Tabla resumen de equipos
+  pdf.setFillColor(...GREEN)
+  pdf.rect(margin, y, 3, 7, 'F')
+  pdf.setFontSize(11)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(30, 30, 30)
+  pdf.text('DETALLE DE EQUIPOS ATENDIDOS', margin + 6, y + 5.5)
+  y += 12
+
+  // Cabecera tabla
+  const cols = [
+    { label: 'N° Informe', w: 24 },
+    { label: 'Fecha',      w: 22 },
+    { label: 'Cliente',    w: 38 },
+    { label: 'Equipo',     w: 34 },
+    { label: 'Serial',     w: 28 },
+    { label: 'Técnico',    w: 30 },
+  ]
+  const tableW = cols.reduce((s, c) => s + c.w, 0)
+
+  pdf.setFillColor(...NAVY)
+  pdf.rect(margin, y, tableW, 8, 'F')
+  pdf.setFontSize(7.5)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(...WHITE)
+  let cx = margin
+  cols.forEach(col => {
+    pdf.text(col.label, cx + 2, y + 5.5)
+    cx += col.w
+  })
+  y += 8
+
+  // Filas
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(7.5)
+  let rowColor = false
 
   for (const inf of opts.informes) {
-    const equipo    = [inf.marca, inf.modelo].filter(Boolean).join(' ') || 'Equipo sin identificar'
-    const hasObs    = !!inf.observaciones
-    const hasRec    = !!inf.recomendaciones
-    const obsLines  = hasObs ? pdf.splitTextToSize(inf.observaciones!, cw - 10) : []
-    const recLines  = hasRec ? pdf.splitTextToSize(inf.recomendaciones!, cw - 14) : []
+    if (y > H - 25) {
+      addPageFooter()
+      pdf.addPage()
+      page++
+      addPageHeader(page)
+      y = 22
 
-    // Altura estimada del card
-    const cardH = 10
-      + (hasObs ? obsLines.length * 4.5 + 8 : 0)
-      + (hasRec ? recLines.length * 4.5 + 10 : 0)
-      + 4
-
-    if (y + cardH > H - 18) y = newPage()
-
-    // Borde izquierdo de color según si tiene recomendaciones
-    pdf.setFillColor(...(hasRec ? AMBER : GREEN))
-    pdf.rect(margin, y, 2.5, cardH, 'F')
-
-    // Fondo card
-    pdf.setFillColor(...LGRAY)
-    pdf.rect(margin + 2.5, y, cw - 2.5, cardH, 'F')
-
-    // Cabecera del card: equipo + serial + fecha + N°
-    pdf.setFontSize(8.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...NAVY)
-    pdf.text(equipo.toUpperCase(), margin + 6, y + 6)
-
-    const meta = [
-      inf.serial     ? `S/N: ${inf.serial}`           : null,
-      inf.capacidad  ? inf.capacidad                   : null,
-      inf.ubicacion  ? `📍 ${inf.ubicacion}`           : null,
-      inf.fecha      ? inf.fecha                       : null,
-      inf.numero_informe ? `#${inf.numero_informe}`    : null,
-    ].filter(Boolean).join('   ·   ')
-
-    pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...GRAY)
-    pdf.text(meta, margin + 6, y + 11)
-
-    let cy = y + 16
-
-    // Observaciones
-    if (hasObs) {
-      pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...GRAY)
-      pdf.text('OBSERVACIONES', margin + 6, cy)
-      cy += 5
-      pdf.setFont('helvetica', 'normal'); pdf.setTextColor(50, 50, 50)
-      pdf.text(obsLines, margin + 6, cy)
-      cy += obsLines.length * 4.5 + 4
+      // Repetir cabecera
+      pdf.setFillColor(...NAVY)
+      pdf.rect(margin, y, tableW, 8, 'F')
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(...WHITE)
+      pdf.setFontSize(7.5)
+      cx = margin
+      cols.forEach(col => { pdf.text(col.label, cx + 2, y + 5.5); cx += col.w })
+      y += 8
+      pdf.setFont('helvetica', 'normal')
     }
 
-    // Recomendaciones — destacadas
-    if (hasRec) {
-      // Fondo amber suave para recomendaciones
-      pdf.setFillColor(255, 237, 213)
-      pdf.roundedRect(margin + 4, cy - 1, cw - 6, recLines.length * 4.5 + 10, 1.5, 1.5, 'F')
+    pdf.setFillColor(...(rowColor ? LGRAY : WHITE))
+    pdf.rect(margin, y, tableW, 7, 'F')
+    pdf.setTextColor(30, 30, 30)
 
-      pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...AMBER)
-      pdf.text('⚠  RECOMENDACIONES', margin + 7, cy + 4)
-      cy += 9
-      pdf.setFont('helvetica', 'normal'); pdf.setTextColor(100, 60, 0)
-      pdf.text(recLines, margin + 7, cy)
-      cy += recLines.length * 4.5 + 2
-    }
+    cx = margin
+    const cells = [
+      inf.numero_informe ?? inf.reporte_numero ?? '—',
+      inf.fecha ?? '—',
+      (inf.cliente ?? '—').substring(0, 20),
+      ([inf.marca, inf.modelo].filter(Boolean).join(' ') || '—').substring(0, 18),
+      (inf.serial ?? '—').substring(0, 16),
+      (inf.tecnico ?? '—').substring(0, 16),
+    ]
+    cells.forEach((cell, i) => {
+      pdf.text(String(cell), cx + 2, y + 4.8)
+      cx += cols[i].w
+    })
 
-    y += cardH + 4
+    // Línea separadora
+    pdf.setDrawColor(220, 220, 220)
+    pdf.setLineWidth(0.1)
+    pdf.line(margin, y + 7, margin + tableW, y + 7)
+
+    y += 7
+    rowColor = !rowColor
   }
 
-  // ── CONCLUSIONES ─────────────────────────────────────────────
+  y += 8
+
+  // ── OBSERVACIONES Y RECOMENDACIONES ──────────────────────────
+  const informesConObs = opts.informes.filter(i => i.observaciones || i.recomendaciones)
+  if (informesConObs.length > 0) {
+    if (y > H - 60) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
+
+    pdf.setFillColor(...GREEN)
+    pdf.rect(margin, y, 3, 7, 'F')
+    pdf.setFontSize(11)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(30, 30, 30)
+    pdf.text('OBSERVACIONES Y RECOMENDACIONES', margin + 6, y + 5.5)
+    y += 12
+
+    for (const inf of informesConObs) {
+      if (y > H - 35) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
+
+      const equipo = [inf.marca, inf.modelo].filter(Boolean).join(' ') || inf.serial || 'Equipo'
+      pdf.setFillColor(...LGRAY)
+      pdf.roundedRect(margin, y, W - margin * 2, 6.5, 1, 1, 'F')
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(...NAVY)
+      pdf.text(`${equipo}  ·  ${inf.cliente ?? ''}  ·  ${inf.fecha ?? ''}`, margin + 3, y + 4.5)
+      y += 8
+
+      if (inf.observaciones) {
+        pdf.setFontSize(7.5)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(...GRAY)
+        pdf.text('Observaciones:', margin + 3, y + 4)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(50, 50, 50)
+        const obs = pdf.splitTextToSize(inf.observaciones, W - margin * 2 - 8)
+        pdf.text(obs, margin + 3, y + 9)
+        y += obs.length * 4.5 + 6
+      }
+      if (inf.recomendaciones) {
+        if (y > H - 30) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
+        const rec = pdf.splitTextToSize(inf.recomendaciones, W - margin * 2 - 12)
+        // Fondo naranja suave para destacar recomendaciones
+        pdf.setFillColor(255, 237, 213)
+        pdf.roundedRect(margin + 2, y, W - margin * 2 - 2, rec.length * 4.5 + 10, 2, 2, 'F')
+        pdf.setFillColor(217, 119, 6)
+        pdf.rect(margin + 2, y, 2.5, rec.length * 4.5 + 10, 'F')
+        pdf.setFontSize(7.5)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(154, 52, 18)
+        pdf.text('⚠  RECOMENDACIONES', margin + 7, y + 5)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(120, 53, 15)
+        pdf.text(rec, margin + 7, y + 10)
+        y += rec.length * 4.5 + 12
+      }
+      y += 4
+    }
+  }
+
+  // ── CONCLUSIONES ──────────────────────────────────────────────
   if (opts.conclusion) {
-    if (y > H - 55) y = newPage()
-    y = sectionTitle('CONCLUSIONES Y PRÓXIMOS PASOS', y)
-    pdf.setFontSize(9.5); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(60, 60, 60)
-    const lines = pdf.splitTextToSize(opts.conclusion, cw)
+    if (y > H - 55) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
+
+    pdf.setFillColor(...GREEN)
+    pdf.rect(margin, y, 3, 7, 'F')
+    pdf.setFontSize(11)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(30, 30, 30)
+    pdf.text('CONCLUSIONES Y PRÓXIMOS PASOS', margin + 6, y + 5.5)
+    y += 14
+
+    pdf.setFontSize(9.5)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(60, 60, 60)
+    const lines = pdf.splitTextToSize(opts.conclusion, W - margin * 2)
     pdf.text(lines, margin, y)
     y += lines.length * 5 + 10
   }
 
-  // ── FIRMAS ───────────────────────────────────────────────────
-  if (y > H - 42) y = newPage()
-  y += 8
-  pdf.setDrawColor(200, 200, 200); pdf.setLineWidth(0.4)
-  pdf.line(margin,          y + 18, margin + 65,          y + 18)
-  pdf.line(W - margin - 65, y + 18, W - margin,           y + 18)
-  pdf.setFontSize(8); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...GRAY)
-  pdf.text('Responsable técnico', margin, y + 23)
-  pdf.text(opts.empresa.nombre, margin, y + 28)
-  pdf.text('Recibido conforme', W - margin - 65, y + 23)
+  // ── FIRMA ─────────────────────────────────────────────────────
+  if (y > H - 45) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
 
-  addFooter()
+  y += 6
+  pdf.setDrawColor(200, 200, 200)
+  pdf.setLineWidth(0.5)
+  // Línea firma técnico
+  pdf.line(margin, y + 20, margin + 65, y + 20)
+  pdf.setFontSize(8)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setTextColor(...GRAY)
+  pdf.text('Responsable técnico', margin, y + 25)
+  pdf.text(opts.empresa.nombre, margin, y + 30)
+
+  // Línea firma cliente
+  pdf.line(W - margin - 65, y + 20, W - margin, y + 20)
+  pdf.text('Recibido conforme', W - margin - 65, y + 25)
+
+  addPageFooter()
 
   const fname = `IE_${new Date().toISOString().split('T')[0]}.pdf`
   pdf.save(fname)
@@ -269,12 +394,12 @@ export default function InformesPage() {
   const [showFilters, setShowFilters] = useState(false)
 
   // Modal informe ejecutivo
-  const [showModal,   setShowModal]   = useState(false)
-  const [modalTitulo, setModalTitulo] = useState('Informe Ejecutivo de Mantenimiento')
-  const [modalPeriodo,setModalPeriodo]= useState('')
-  const [modalIntro,  setModalIntro]  = useState('')
-  const [modalConcl,  setModalConcl]  = useState('')
-  const [generating,  setGenerating]  = useState(false)
+  const [showModal,    setShowModal]   = useState(false)
+  const [modalTitulo,  setModalTitulo] = useState('Informe Ejecutivo de Mantenimiento')
+  const [modalPeriodo, setModalPeriodo]= useState('')
+  const [modalIntro,   setModalIntro]  = useState('')
+  const [modalConcl,   setModalConcl]  = useState('')
+  const [generating,   setGenerating]  = useState(false)
 
   useEffect(() => {
     if (!loading && !user) { router.push('/login'); return }
@@ -300,7 +425,6 @@ export default function InformesPage() {
     }
   }, [user])
 
-  // Pre-rellenar modal al abrirlo
   const abrirModal = () => {
     const parts = []
     if (desde) parts.push(new Date(desde + 'T12:00').toLocaleDateString('es-CO'))
