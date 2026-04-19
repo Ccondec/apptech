@@ -187,7 +187,7 @@ async function generarInformeEjecutivoPDF(opts: {
   })
   y += 28
 
-  // Tabla resumen de equipos
+  // ── TABLA UNIFICADA: equipo + recomendaciones en la misma fila ──
   pdf.setFillColor(...GREEN)
   pdf.rect(margin, y, 3, 7, 'F')
   pdf.setFontSize(11)
@@ -196,139 +196,110 @@ async function generarInformeEjecutivoPDF(opts: {
   pdf.text('DETALLE DE EQUIPOS ATENDIDOS', margin + 6, y + 5.5)
   y += 12
 
-  // Cabecera tabla
+  // Columnas: N°(20) Fecha(18) Ubicación(28) Equipo(32) Serial(24) Recomendaciones(resto)
   const cols = [
-    { label: 'N° Informe', w: 24 },
-    { label: 'Fecha',      w: 22 },
-    { label: 'Cliente',    w: 38 },
-    { label: 'Equipo',     w: 34 },
-    { label: 'Serial',     w: 28 },
-    { label: 'Técnico',    w: 30 },
+    { label: 'N° Informe',       w: 20 },
+    { label: 'Fecha',            w: 18 },
+    { label: 'Ubicación',        w: 28 },
+    { label: 'Equipo',           w: 33 },
+    { label: 'Serial',           w: 24 },
+    { label: 'Recomendaciones',  w: 57 },
   ]
-  const tableW = cols.reduce((s, c) => s + c.w, 0)
+  const tableW = cols.reduce((s, c) => s + c.w, 0)  // 180mm = W - 2*margin
 
-  pdf.setFillColor(...NAVY)
-  pdf.rect(margin, y, tableW, 8, 'F')
-  pdf.setFontSize(7.5)
-  pdf.setFont('helvetica', 'bold')
-  pdf.setTextColor(...WHITE)
-  let cx = margin
-  cols.forEach(col => {
-    pdf.text(col.label, cx + 2, y + 5.5)
-    cx += col.w
-  })
+  const drawTableHeader = () => {
+    pdf.setFillColor(...NAVY)
+    pdf.rect(margin, y, tableW, 8, 'F')
+    pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...WHITE)
+    let cx = margin
+    cols.forEach(col => { pdf.text(col.label, cx + 2, y + 5.5); cx += col.w })
+    pdf.setTextColor(0, 0, 0)
+  }
+
+  drawTableHeader()
   y += 8
 
-  // Filas
-  pdf.setFont('helvetica', 'normal')
-  pdf.setFontSize(7.5)
-  let rowColor = false
+  let rowAlt = false
 
   for (const inf of opts.informes) {
-    if (y > H - 25) {
-      addPageFooter()
-      pdf.addPage()
-      page++
-      addPageHeader(page)
-      y = 22
+    const hasRec = !!inf.recomendaciones
+    const hasObs = !!inf.observaciones
+    const recText = hasRec ? inf.recomendaciones! : (hasObs ? inf.observaciones! : '—')
+    const recW    = cols[5].w - 4
+    pdf.setFontSize(7.5)
+    const recLines = pdf.splitTextToSize(recText, recW)
+    const rowH = Math.max(8, recLines.length * 4.5 + 5)
 
-      // Repetir cabecera
-      pdf.setFillColor(...NAVY)
-      pdf.rect(margin, y, tableW, 8, 'F')
-      pdf.setFont('helvetica', 'bold')
-      pdf.setTextColor(...WHITE)
-      pdf.setFontSize(7.5)
-      cx = margin
-      cols.forEach(col => { pdf.text(col.label, cx + 2, y + 5.5); cx += col.w })
-      y += 8
-      pdf.setFont('helvetica', 'normal')
+    if (y + rowH > H - 18) {
+      addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22
+      drawTableHeader(); y += 8
     }
 
-    pdf.setFillColor(...(rowColor ? LGRAY : WHITE))
-    pdf.rect(margin, y, tableW, 7, 'F')
-    pdf.setTextColor(30, 30, 30)
+    // Fondo alternado fila
+    pdf.setFillColor(...(rowAlt ? [232, 235, 240] as [number,number,number] : WHITE))
+    pdf.rect(margin, y, tableW, rowH, 'F')
 
-    cx = margin
-    const cells = [
+    // Celda recomendaciones: fondo ámbar si hay rec, verde muy suave si solo obs
+    if (hasRec) {
+      pdf.setFillColor(255, 237, 213)
+      pdf.rect(margin + tableW - cols[5].w, y, cols[5].w, rowH, 'F')
+    } else if (hasObs) {
+      pdf.setFillColor(220, 252, 231)
+      pdf.rect(margin + tableW - cols[5].w, y, cols[5].w, rowH, 'F')
+    }
+
+    // Borde izquierdo de color (3mm)
+    if (hasRec) {
+      pdf.setFillColor(217, 119, 6)   // ámbar
+    } else if (hasObs) {
+      pdf.setFillColor(...GREEN)       // verde
+    } else {
+      pdf.setFillColor(200, 200, 200) // gris neutro
+    }
+    pdf.rect(margin, y, 3, rowH, 'F')
+
+    // Texto columnas info
+    const midY = y + rowH / 2 + 2.5
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(30, 30, 30)
+    const infoCells = [
       inf.numero_informe ?? inf.reporte_numero ?? '—',
       inf.fecha ?? '—',
-      (inf.cliente ?? '—').substring(0, 20),
+      (inf.ubicacion ?? '—').substring(0, 16),
       ([inf.marca, inf.modelo].filter(Boolean).join(' ') || '—').substring(0, 18),
-      (inf.serial ?? '—').substring(0, 16),
-      (inf.tecnico ?? '—').substring(0, 16),
+      (inf.serial ?? '—').substring(0, 14),
     ]
-    cells.forEach((cell, i) => {
-      pdf.text(String(cell), cx + 2, y + 4.8)
+    let cx = margin + 3
+    infoCells.forEach((cell, i) => {
+      pdf.text(String(cell), cx + 2, midY)
       cx += cols[i].w
     })
 
-    // Línea separadora
-    pdf.setDrawColor(220, 220, 220)
-    pdf.setLineWidth(0.1)
-    pdf.line(margin, y + 7, margin + tableW, y + 7)
-
-    y += 7
-    rowColor = !rowColor
-  }
-
-  y += 8
-
-  // ── OBSERVACIONES Y RECOMENDACIONES ──────────────────────────
-  const informesConObs = opts.informes.filter(i => i.observaciones || i.recomendaciones)
-  if (informesConObs.length > 0) {
-    if (y > H - 60) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
-
-    pdf.setFillColor(...GREEN)
-    pdf.rect(margin, y, 3, 7, 'F')
-    pdf.setFontSize(11)
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(30, 30, 30)
-    pdf.text('OBSERVACIONES Y RECOMENDACIONES', margin + 6, y + 5.5)
-    y += 12
-
-    for (const inf of informesConObs) {
-      if (y > H - 35) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
-
-      const equipo = [inf.marca, inf.modelo].filter(Boolean).join(' ') || inf.serial || 'Equipo'
-      pdf.setFillColor(...LGRAY)
-      pdf.roundedRect(margin, y, W - margin * 2, 6.5, 1, 1, 'F')
-      pdf.setFontSize(8)
-      pdf.setFont('helvetica', 'bold')
-      pdf.setTextColor(...NAVY)
-      pdf.text(`${equipo}  ·  ${inf.cliente ?? ''}  ·  ${inf.fecha ?? ''}`, margin + 3, y + 4.5)
-      y += 8
-
-      if (inf.observaciones) {
-        pdf.setFontSize(7.5)
-        pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(...GRAY)
-        pdf.text('Observaciones:', margin + 3, y + 4)
-        pdf.setFont('helvetica', 'normal')
-        pdf.setTextColor(50, 50, 50)
-        const obs = pdf.splitTextToSize(inf.observaciones, W - margin * 2 - 8)
-        pdf.text(obs, margin + 3, y + 9)
-        y += obs.length * 4.5 + 6
-      }
-      if (inf.recomendaciones) {
-        if (y > H - 30) { addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22 }
-        const rec = pdf.splitTextToSize(inf.recomendaciones, W - margin * 2 - 12)
-        // Fondo naranja suave para destacar recomendaciones
-        pdf.setFillColor(255, 237, 213)
-        pdf.roundedRect(margin + 2, y, W - margin * 2 - 2, rec.length * 4.5 + 10, 2, 2, 'F')
-        pdf.setFillColor(217, 119, 6)
-        pdf.rect(margin + 2, y, 2.5, rec.length * 4.5 + 10, 'F')
-        pdf.setFontSize(7.5)
-        pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(154, 52, 18)
-        pdf.text('⚠  RECOMENDACIONES', margin + 7, y + 5)
-        pdf.setFont('helvetica', 'normal')
-        pdf.setTextColor(120, 53, 15)
-        pdf.text(rec, margin + 7, y + 10)
-        y += rec.length * 4.5 + 12
-      }
-      y += 4
+    // Texto recomendaciones / observaciones en la última columna
+    const recX = margin + tableW - cols[5].w + 2
+    if (hasRec) {
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(6.5); pdf.setTextColor(154, 52, 18)
+      pdf.text('⚠ REC.', recX, y + 4.5)
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(120, 53, 15)
+      pdf.text(recLines, recX, y + 9)
+    } else if (hasObs) {
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(6.5); pdf.setTextColor(21, 128, 61)
+      pdf.text('OBS.', recX, y + 4.5)
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(22, 101, 52)
+      pdf.text(recLines, recX, y + 9)
+    } else {
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(180, 180, 180)
+      pdf.text('—', recX, midY)
     }
+
+    // Línea separadora inferior
+    pdf.setDrawColor(210, 215, 220); pdf.setLineWidth(0.1)
+    pdf.line(margin, y + rowH, margin + tableW, y + rowH)
+
+    y += rowH
+    rowAlt = !rowAlt
   }
+
+  y += 6
 
   // ── CONCLUSIONES ──────────────────────────────────────────────
   if (opts.conclusion) {
