@@ -108,7 +108,7 @@ async function generarInformeEjecutivoPDF(opts: {
 
   // ── Tarjeta gris en la parte inferior ────────────────────────
   const cardH  = 62
-  const cardY  = H - cardH - 8
+  const cardY  = H - cardH - 28
   const col1   = margin + 8
   const col2   = W / 2 + 4
 
