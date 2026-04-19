@@ -228,7 +228,7 @@ async function generarInformeEjecutivoPDF(opts: {
     const recW    = cols[5].w - 4
     pdf.setFontSize(7.5)
     const recLines = pdf.splitTextToSize(recText, recW)
-    const rowH = Math.max(8, recLines.length * 4.5 + 5)
+    const rowH = Math.max(6, recLines.length * 4 + 3)
 
     if (y + rowH > H - 18) {
       addPageFooter(); pdf.addPage(); page++; addPageHeader(page); y = 22
@@ -259,7 +259,7 @@ async function generarInformeEjecutivoPDF(opts: {
     pdf.rect(margin, y, 3, rowH, 'F')
 
     // Texto columnas info
-    const midY = y + rowH / 2 + 2.5
+    const midY = y + rowH / 2 + 2
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(30, 30, 30)
     const infoCells = [
       inf.numero_informe ?? inf.reporte_numero ?? '—',
@@ -278,10 +278,10 @@ async function generarInformeEjecutivoPDF(opts: {
     const recX = margin + tableW - cols[5].w + 2
     if (hasRec) {
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(120, 53, 15)
-      pdf.text(recLines, recX, y + rowH / 2 - (recLines.length * 4.5) / 2 + 3)
+      pdf.text(recLines, recX, y + rowH / 2 - (recLines.length * 4) / 2 + 2.5)
     } else if (hasObs) {
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(22, 101, 52)
-      pdf.text(recLines, recX, y + rowH / 2 - (recLines.length * 4.5) / 2 + 3)
+      pdf.text(recLines, recX, y + rowH / 2 - (recLines.length * 4) / 2 + 2.5)
     } else {
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(180, 180, 180)
       pdf.text('—', recX, midY)
