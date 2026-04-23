@@ -35,6 +35,7 @@ export interface Usuario {
   nombre: string
   rol: 'admin' | 'tecnico'
   activo: boolean
+  must_change_password?: boolean
 }
 
 export interface ClienteRecord {
@@ -67,6 +68,33 @@ export interface EquipoRecord {
 }
 
 // ── Auth helpers ──────────────────────────────────────────────
+
+export async function solicitarRecuperacion(email: string): Promise<{ ok: boolean; error?: string }> {
+  // Verificar que el correo está registrado en la plataforma antes de enviar
+  const { data: registrado, error: rpcErr } = await supabase.rpc('email_registrado', {
+    p_email: email.trim().toLowerCase(),
+  })
+  if (rpcErr || !registrado) {
+    return { ok: false, error: 'Este correo no está registrado en la plataforma.' }
+  }
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://apptech-one.vercel.app'}/reset-password`,
+  })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function actualizarPassword(newPassword: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) return { ok: false, error: error.message }
+  // Limpiar el flag de cambio obligatorio
+  const session = await getSession()
+  if (session) {
+    await supabase.from('usuarios').update({ must_change_password: false }).eq('id', session.user.id)
+  }
+  return { ok: true }
+}
 
 export async function getSession() {
   const { data } = await supabase.auth.getSession()
@@ -139,14 +167,14 @@ export async function registrarConLicencia(
 
 // ── Clientes ──────────────────────────────────────────────────
 
-export async function buscarClientes(query: string): Promise<ClienteRecord[]> {
+export async function buscarClientes(query: string, empresaId?: string): Promise<ClienteRecord[]> {
   if (!query.trim()) return []
-  const usuario = await getUsuarioActual()
-  if (!usuario) return []
+  const eid = empresaId ?? (await getUsuarioActual())?.empresa_id
+  if (!eid) return []
   const { data } = await supabase
     .from('clientes')
     .select('*')
-    .eq('empresa_id', usuario.empresa_id)
+    .eq('empresa_id', eid)
     .ilike('company', `%${query}%`)
     .limit(8)
   return data ?? []
@@ -167,14 +195,14 @@ export async function guardarCliente(data: Omit<ClienteRecord, 'id' | 'empresa_i
 
 // ── Equipos ───────────────────────────────────────────────────
 
-export async function buscarEquipos(query: string): Promise<EquipoRecord[]> {
+export async function buscarEquipos(query: string, empresaId?: string): Promise<EquipoRecord[]> {
   if (!query.trim()) return []
-  const usuario = await getUsuarioActual()
-  if (!usuario) return []
+  const eid = empresaId ?? (await getUsuarioActual())?.empresa_id
+  if (!eid) return []
   const { data } = await supabase
     .from('equipos')
     .select('*, clientes(company, contact, address, email, city, phone)')
-    .eq('empresa_id', usuario.empresa_id)
+    .eq('empresa_id', eid)
     .ilike('serial', `%${query}%`)
     .limit(8)
 
@@ -420,11 +448,195 @@ export async function validarFormToken(tokenId: string): Promise<{ empresaId: st
 
 // ── Consecutivos de informes por empresa y tipo ───────────────
 
-export async function siguienteNumeroInforme(empresaId: string, tipoReporte: string): Promise<number> {
+// Lee el próximo número sin incrementarlo (para mostrarlo en el encabezado)
+// Usa el API route con service role para evitar bloqueos de RLS
+export async function obtenerNumeroActual(empresaId: string): Promise<number> {
+  const res = await fetch(`/api/peek-consecutivo?empresa_id=${encodeURIComponent(empresaId)}`)
+  if (!res.ok) return 1
+  const json = await res.json()
+  return (json.numero as number) ?? 1
+}
+
+// Un único consecutivo global por empresa — el tipo solo afecta el prefijo del formato
+export async function siguienteNumeroInforme(empresaId: string, _tipoReporte?: string): Promise<number> {
   const { data, error } = await supabase.rpc('siguiente_numero_informe', {
     p_empresa_id: empresaId,
-    p_tipo: tipoReporte,
+    p_tipo: 'global',
   })
   if (error) { console.error('siguienteNumeroInforme error:', error); return 1 }
   return (data as number) ?? 1
+}
+
+// Formato: TIPO/AA-NNNN  (ej: UPS/26-0001)
+export function formatearNumeroInforme(n: number, tipo: string): string {
+  const TIPO_PREFIX: Record<string, string> = {
+    ups: 'UPS', aire: 'AIR', planta: 'PLT', fotovoltaico: 'FTV', otros: 'OTR',
+  }
+  const prefix = TIPO_PREFIX[tipo] ?? 'RPT'
+  const yy = String(new Date().getFullYear()).slice(-2)
+  return `${prefix}-${yy}${String(n).padStart(4, '0')}`
+}
+
+// ── QR consecutivo por empresa ────────────────────────────────
+
+export async function siguienteQrEquipo(empresaId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('siguiente_qr_equipo', {
+    p_empresa_id: empresaId,
+  })
+  if (error) { console.error('siguienteQrEquipo error:', error); return 'EQ-0001' }
+  const base = (data as string) ?? 'EQ-0001'
+  // Prefijo único por empresa (primeros 6 chars del UUID en mayúsculas)
+  // Ejemplo: "ABC123-EQ-0001" — evita colisiones entre empresas
+  const prefix = empresaId.replace(/-/g, '').slice(0, 6).toUpperCase()
+  return `${prefix}-${base}`
+}
+
+export async function buscarEquipoPorSerial(serial: string, empresaId?: string): Promise<EquipoRecord | null> {
+  const eid = empresaId ?? (await getUsuarioActual())?.empresa_id
+  if (!eid) return null
+  const { data } = await supabase
+    .from('equipos')
+    .select('*, clientes(company, contact, address, email, city, phone)')
+    .eq('empresa_id', eid)
+    .ilike('serial', serial.trim())
+    .maybeSingle()
+  if (!data) return null
+  return {
+    ...data,
+    client_company: data.clientes?.company ?? '',
+    client_contact: data.clientes?.contact ?? '',
+    client_address: data.clientes?.address ?? '',
+    client_email:   data.clientes?.email   ?? '',
+    client_city:    data.clientes?.city    ?? '',
+    client_phone:   data.clientes?.phone   ?? '',
+  }
+}
+
+// ── Consecutivo inicial (administrable) ──────────────────────
+
+// Consecutivo global único — el tipo ya no diferencia el contador
+export async function setConsecutivoInicial(empresaId: string, _tipo: string, valor: number): Promise<void> {
+  await supabase
+    .from('consecutivos')
+    .upsert({ empresa_id: empresaId, tipo_reporte: 'global', ultimo_numero: valor - 1 }, { onConflict: 'empresa_id,tipo_reporte' })
+}
+
+// ── Validar que un correo está registrado como cliente ────────
+
+export async function validarEmailCliente(
+  email: string,
+  empresaId: string,
+): Promise<{ valido: boolean; nombre?: string }> {
+  if (!email.trim()) return { valido: false }
+  const { data } = await supabase
+    .from('clientes')
+    .select('id, company')
+    .eq('empresa_id', empresaId)
+    .ilike('email', email.trim())
+    .maybeSingle()
+  if (!data) return { valido: false }
+  return { valido: true, nombre: data.company }
+}
+
+// ── Importar clientes desde array ────────────────────────────
+
+export async function importarClientes(filas: Omit<ClienteRecord, 'id' | 'empresa_id'>[]): Promise<{ ok: number; errores: number }> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return { ok: 0, errores: filas.length }
+  let ok = 0; let errores = 0
+  for (const fila of filas) {
+    const { error } = await supabase
+      .from('clientes')
+      .upsert({ ...fila, empresa_id: usuario.empresa_id }, { onConflict: 'company,empresa_id' })
+    if (error) errores++; else ok++
+  }
+  return { ok, errores }
+}
+
+// ── Importar equipos desde array ──────────────────────────────
+
+export interface ImportEquipoRow {
+  serial: string
+  brand?: string
+  model?: string
+  capacity?: string
+  ubicacion?: string
+  qr_code?: string
+  /** Nombre del cliente tal como aparece en la hoja Clientes (para auto-vincular) */
+  company?: string
+}
+
+export async function importarEquipos(filas: ImportEquipoRow[], onProgress?: (done: number, total: number) => void): Promise<{ ok: number; errores: number; detalle?: string[] }> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return { ok: 0, errores: filas.length, detalle: ['Usuario no autenticado'] }
+
+  // Cargar todos los clientes de la empresa de una sola vez
+  const { data: clientesDB } = await supabase
+    .from('clientes')
+    .select('id, company')
+    .eq('empresa_id', usuario.empresa_id)
+
+  // Mapa nombre (minúsculas) → id para búsqueda rápida
+  const clienteMap = new Map<string, string>(
+    (clientesDB ?? []).map(c => [c.company.toLowerCase().trim(), c.id])
+  )
+
+  let ok = 0; let errores = 0
+  const detalle: string[] = []
+
+  // Pre-cargar equipos existentes para conservar su qr_code
+  const serialesImport = filas.map(f => f.serial.trim()).filter(Boolean)
+  const { data: equiposExistentes } = await supabase
+    .from('equipos')
+    .select('serial, qr_code')
+    .eq('empresa_id', usuario.empresa_id)
+    .in('serial', serialesImport)
+
+  const qrExistenteMap = new Map<string, string>(
+    (equiposExistentes ?? []).map(e => [e.serial, e.qr_code])
+  )
+
+  for (const fila of filas) {
+    try {
+      if (!fila.serial?.trim()) {
+        errores++
+        detalle.push(`Fila sin serial — omitida`)
+        continue
+      }
+
+      // Resolver client_id a partir del nombre de empresa
+      const client_id = fila.company
+        ? clienteMap.get(fila.company.toLowerCase().trim())
+        : undefined
+
+      if (fila.company && !client_id) {
+        detalle.push(`Serial ${fila.serial}: cliente "${fila.company}" no encontrado — se importa sin cliente`)
+      }
+
+      // Prioridad QR: 1) el que trae el archivo, 2) el que ya tiene en BD, 3) generar nuevo
+      const qr_code = fila.qr_code?.trim()
+        || qrExistenteMap.get(fila.serial.trim())
+        || await siguienteQrEquipo(usuario.empresa_id)
+
+      const { company: _c, ...resto } = fila
+      const { error } = await supabase
+        .from('equipos')
+        .upsert(
+          { ...resto, qr_code, client_id, empresa_id: usuario.empresa_id },
+          { onConflict: 'serial,empresa_id' }
+        )
+      if (error) {
+        errores++
+        detalle.push(`Serial ${fila.serial}: ${error.message}`)
+      } else {
+        ok++
+      }
+    } catch (e: unknown) {
+      errores++
+      detalle.push(`Serial ${fila.serial}: ${e instanceof Error ? e.message : 'error desconocido'}`)
+    }
+    onProgress?.(ok + errores, filas.length)
+  }
+
+  return { ok, errores, detalle }
 }

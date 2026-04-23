@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button'
 import { LogOut, User, ShieldCheck, Zap } from 'lucide-react'
 
 export default function HomePage() {
-  const { user, loading, signOut } = useAuth()
+  const { user, loading, mustChangePassword, signOut } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
     if (!loading && !user) router.push('/login')
-  }, [loading, user, router])
+    if (!loading && user && mustChangePassword) router.push('/cambiar-password')
+  }, [loading, user, mustChangePassword, router])
 
   if (loading) {
     return (
@@ -33,9 +34,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 py-2 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white">
-                <Zap className="w-4 h-4" />
-              </div>
+              <img src="/icons/icon-192x192.png" className="w-9 h-9 rounded-full object-contain border border-gray-100" alt="Logo" />
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white">
                   <User className="w-4 h-4" />

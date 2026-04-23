@@ -1,12 +1,12 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { supabase, Usuario } from '@/lib/supabase'
+import { supabase, Usuario, importarClientes, importarEquipos, setConsecutivoInicial, ImportEquipoRow } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup } from 'lucide-react'
 import { crearFormToken, listarFormTokens, desactivarFormToken, FormToken } from '@/lib/supabase'
 
 export default function AdminPage() {
@@ -28,6 +28,22 @@ export default function AdminPage() {
   const [tokenDesc, setTokenDesc] = useState('')
   const [generatingToken, setGeneratingToken] = useState(false)
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null)
+
+  // Excel import — dos archivos separados
+  const fileClientesRef = useRef<HTMLInputElement>(null)
+  const fileEquiposRef  = useRef<HTMLInputElement>(null)
+  const [importandoClientes, setImportandoClientes] = useState(false)
+  const [importandoEquipos,  setImportandoEquipos]  = useState(false)
+  const [progresoCl, setProgresoCl] = useState(0)   // 0-100
+  const [progresoEq, setProgresoEq] = useState(0)   // 0-100
+  const [progresoEqTexto, setProgresoEqTexto] = useState('')
+  const [resultClientes, setResultClientes] = useState<{ ok: number; errores: number } | null>(null)
+  const [resultEquipos,  setResultEquipos]  = useState<{ ok: number; errores: number; detalle?: string[] } | null>(null)
+
+  // Consecutivo global único
+  const [consecValue, setConsecValue] = useState('')
+  const [consecSaving, setConsecSaving] = useState(false)
+  const [consecSaved, setConsecSaved] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) { router.push('/login'); return }
@@ -117,6 +133,218 @@ export default function AdminPage() {
     cargarUsuarios()
   }
 
+  // ── Descargar plantilla Excel ────────────────────────────────
+  // ── Descargar plantilla clientes ────────────────────────────
+  const descargarPlantillaClientes = async () => {
+    const XLSX = await import('xlsx')
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['company', 'contact', 'address', 'email', 'city', 'phone'],
+      ['Empresa Ejemplo S.A.', 'Juan Pérez', 'Calle 123 #45-67', 'contacto@empresa.com', 'Bogotá', '3001234567'],
+      ['Distribuidora XYZ', 'María López', 'Av. Principal 789', 'info@xyz.com', 'Medellín', '3109876543'],
+    ])
+    ws['!cols'] = [24,18,26,28,14,14].map(w => ({ wch: w }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
+    XLSX.writeFile(wb, 'plantilla_clientes.xlsx')
+  }
+
+  // ── Descargar plantilla equipos ──────────────────────────────
+  const descargarPlantillaEquipos = async () => {
+    const XLSX = await import('xlsx')
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['serial', 'company', 'brand', 'model', 'capacity', 'ubicacion', 'qr_code'],
+      ['SN-001234', 'Empresa Ejemplo S.A.', 'APC', 'Smart-UPS 3000', '3000VA', 'Sala de servidores', ''],
+      ['SN-005678', 'Empresa Ejemplo S.A.', 'Schneider', 'Galaxy 5000', '10kVA', 'Data center', ''],
+      ['SN-009999', 'Distribuidora XYZ',    'Vertiv',    'Liebert GXT5', '6kVA', 'Oficina piso 3', ''],
+    ])
+    ws['!cols'] = [16,24,14,20,12,22,14].map(w => ({ wch: w }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Equipos')
+    XLSX.writeFile(wb, 'plantilla_equipos.xlsx')
+  }
+
+  // ── Importar archivo de clientes ─────────────────────────────
+  const handleImportClientes = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return
+    e.target.value = ''
+    setImportandoClientes(true); setResultClientes(null); setProgresoCl(10)
+    try {
+      const XLSX = await import('xlsx')
+      setProgresoCl(30)
+      const wb = XLSX.read(await file.arrayBuffer())
+      const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+      const filas = rows.map(r => ({
+        company: String(r.company ?? r.empresa ?? r.nombre ?? '').trim(),
+        contact: String(r.contact ?? r.contacto ?? '').trim(),
+        address: String(r.address ?? r.direccion ?? '').trim(),
+        email:   String(r.email   ?? '').trim(),
+        city:    String(r.city    ?? r.ciudad ?? '').trim(),
+        phone:   String(r.phone   ?? r.telefono ?? '').trim(),
+      })).filter(f => f.company)
+      setProgresoCl(60)
+      setResultClientes(filas.length > 0 ? await importarClientes(filas) : { ok: 0, errores: 0 })
+      setProgresoCl(100)
+    } catch { setResultClientes({ ok: 0, errores: 1 }); setProgresoCl(100) }
+    finally { setImportandoClientes(false); setTimeout(() => setProgresoCl(0), 800) }
+  }
+
+  // ── Importar archivo de equipos ──────────────────────────────
+  const handleImportEquipos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return
+    e.target.value = ''
+    setImportandoEquipos(true); setResultEquipos(null); setProgresoEq(5); setProgresoEqTexto('Leyendo archivo…')
+    try {
+      const XLSX = await import('xlsx')
+      setProgresoEq(15); setProgresoEqTexto('Procesando filas…')
+      const wb = XLSX.read(await file.arrayBuffer())
+      const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+      const filas: ImportEquipoRow[] = rows.map(r => ({
+        serial:    String(r.serial    ?? '').trim(),
+        company:   String(r.company   ?? r.empresa  ?? r.cliente  ?? '').trim() || undefined,
+        brand:     String(r.brand     ?? r.marca     ?? '').trim() || undefined,
+        model:     String(r.model     ?? r.modelo    ?? '').trim() || undefined,
+        capacity:  String(r.capacity  ?? r.capacidad ?? '').trim() || undefined,
+        ubicacion: String(r.ubicacion ?? r.location  ?? '').trim() || undefined,
+        qr_code:   String(r.qr_code   ?? r.qr        ?? '').trim() || undefined,
+      })).filter(f => f.serial)
+      setProgresoEq(30); setProgresoEqTexto(`Importando ${filas.length} equipos…`)
+      const result = await importarEquipos(filas, (done, total) => {
+        setProgresoEq(30 + Math.round((done / total) * 65))
+        setProgresoEqTexto(`${done} / ${total} equipos…`)
+      })
+      setResultEquipos(filas.length > 0 ? result : { ok: 0, errores: 0 })
+      setProgresoEq(100); setProgresoEqTexto('¡Listo!')
+    } catch { setResultEquipos({ ok: 0, errores: 1 }); setProgresoEq(100) }
+    finally { setImportandoEquipos(false); setTimeout(() => { setProgresoEq(0); setProgresoEqTexto('') }, 800) }
+  }
+
+  // ── Backup ───────────────────────────────────────────────────
+  const [generandoBackup, setGenerandoBackup] = useState(false)
+  const [backupOk, setBackupOk] = useState(false)
+  const [backupProgreso, setBackupProgreso] = useState('')
+  const [backupPct, setBackupPct] = useState(0)
+
+  const generarBackup = async () => {
+    if (!user) return
+    setGenerandoBackup(true)
+    setBackupProgreso('Cargando datos…'); setBackupPct(5)
+    try {
+      const [XLSX, JSZip] = await Promise.all([import('xlsx'), import('jszip')])
+      const zip = new JSZip.default()
+      const empresaId = user.empresa_id
+      const nombreEmpresa = user.empresa?.nombre?.replace(/\s+/g, '_') ?? 'empresa'
+      const fecha = new Date().toISOString().slice(0, 10)
+
+      // Cargar datos en paralelo
+      const [resClientes, resEquipos, resInformes, resUsuarios] = await Promise.all([
+        supabase.from('clientes').select('*').eq('empresa_id', empresaId),
+        supabase.from('equipos').select('*').eq('empresa_id', empresaId),
+        supabase.from('informes').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+        supabase.from('usuarios').select('id, nombre, rol, activo, created_at').eq('empresa_id', empresaId),
+      ])
+
+      // ── Excel ────────────────────────────────────────────────
+      setBackupProgreso('Generando Excel…'); setBackupPct(25)
+      const wb = XLSX.utils.book_new()
+
+      const clientes = (resClientes.data ?? []).map(c => ({
+        ID: c.id, Empresa: c.company, Contacto: c.contact, Dirección: c.address,
+        Email: c.email, Ciudad: c.city, Teléfono: c.phone,
+      }))
+      const wsC = XLSX.utils.json_to_sheet(clientes.length ? clientes : [{}])
+      wsC['!cols'] = [10,24,18,26,26,14,14].map(w => ({ wch: w }))
+      XLSX.utils.book_append_sheet(wb, wsC, 'Clientes')
+
+      const equipos = (resEquipos.data ?? []).map(e => ({
+        ID: e.id, Serial: e.serial, Marca: e.brand, Modelo: e.model,
+        Capacidad: e.capacity, Ubicación: e.ubicacion, 'QR Code': e.qr_code,
+        'ID Cliente': e.client_id,
+      }))
+      const wsE = XLSX.utils.json_to_sheet(equipos.length ? equipos : [{}])
+      wsE['!cols'] = [10,14,14,20,12,22,14,10].map(w => ({ wch: w }))
+      XLSX.utils.book_append_sheet(wb, wsE, 'Equipos')
+
+      const informesData = resInformes.data ?? []
+      const informes = informesData.map(i => ({
+        'N° Informe': i.numero_informe, Fecha: i.fecha, Cliente: i.cliente,
+        Serial: i.serial, Marca: i.marca, Modelo: i.modelo, Capacidad: i.capacidad,
+        Ubicación: i.ubicacion, Técnico: i.tecnico, Tipo: i.tipo_reporte,
+        Observaciones: i.observaciones, Recomendaciones: i.recomendaciones,
+        'URL PDF': i.pdf_url, 'Creado en': i.created_at,
+      }))
+      const wsI = XLSX.utils.json_to_sheet(informes.length ? informes : [{}])
+      wsI['!cols'] = [14,12,22,14,12,18,10,22,18,10,30,30,40,20].map(w => ({ wch: w }))
+      XLSX.utils.book_append_sheet(wb, wsI, 'Informes')
+
+      const usuariosData = (resUsuarios.data ?? []).map(u => ({
+        ID: u.id, Nombre: u.nombre, Rol: u.rol,
+        Activo: u.activo ? 'Sí' : 'No', 'Creado en': u.created_at,
+      }))
+      const wsU = XLSX.utils.json_to_sheet(usuariosData.length ? usuariosData : [{}])
+      wsU['!cols'] = [10,20,10,8,20].map(w => ({ wch: w }))
+      XLSX.utils.book_append_sheet(wb, wsU, 'Usuarios')
+
+      // Agregar Excel al ZIP
+      const xlsxBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      zip.file(`datos_${nombreEmpresa}_${fecha}.xlsx`, xlsxBuffer)
+
+      // ── PDFs ─────────────────────────────────────────────────
+      const pdfsConUrl = informesData.filter(i => i.pdf_url)
+      if (pdfsConUrl.length > 0) {
+        const carpetaPdf = zip.folder('PDFs')!
+        let descargados = 0
+        // Descargar en lotes de 5 para no saturar la red
+        for (let i = 0; i < pdfsConUrl.length; i += 5) {
+          const lote = pdfsConUrl.slice(i, i + 5)
+          await Promise.all(lote.map(async (inf) => {
+            try {
+              const res = await fetch(inf.pdf_url)
+              if (!res.ok) return
+              const buffer = await res.arrayBuffer()
+              const nombre = `${inf.numero_informe ?? `informe_${inf.id}`}.pdf`
+              carpetaPdf.file(nombre, buffer)
+              descargados++
+              setBackupProgreso(`Descargando PDFs… ${descargados}/${pdfsConUrl.length}`)
+              setBackupPct(40 + Math.round((descargados / pdfsConUrl.length) * 45))
+            } catch { /* ignorar PDFs que fallen */ }
+          }))
+        }
+      }
+
+      // ── Generar y descargar ZIP ───────────────────────────────
+      setBackupProgreso('Comprimiendo…'); setBackupPct(88)
+      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
+      const url = URL.createObjectURL(zipBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `backup_${nombreEmpresa}_${fecha}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      setBackupPct(100)
+      setBackupOk(true)
+      setBackupProgreso('')
+      setTimeout(() => { setBackupOk(false); setBackupPct(0) }, 3000)
+    } catch (err) {
+      console.error('Backup error:', err)
+      alert('Error al generar el backup. Intenta de nuevo.')
+      setBackupProgreso(''); setBackupPct(0)
+    } finally {
+      setGenerandoBackup(false)
+    }
+  }
+
+  // ── Consecutivo global ─────────────────────────────────────────
+  const guardarConsecutivo = async () => {
+    const val = parseInt(consecValue ?? '1')
+    if (!val || val < 1 || !user) return
+    setConsecSaving(true)
+    await setConsecutivoInicial(user.empresa_id, 'global', val)
+    setConsecSaving(false)
+    setConsecSaved(true)
+    setTimeout(() => setConsecSaved(false), 2000)
+  }
+
   if (loading || !user) return null
 
   return (
@@ -141,24 +369,175 @@ export default function AdminPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
 
-        {/* Licencia */}
+
+        {/* Consecutivo de informes */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Clave de licencia</h2>
-          <div className="flex items-center gap-3">
-            <code className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm font-mono text-gray-700">
-              {user.empresa?.license_key}
-            </code>
+          <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
+            <Hash className="w-4 h-4" /> Consecutivo de informes
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Número único compartido por todos los tipos de servicio. El tipo diferencia
+            el prefijo del código: <code className="bg-gray-100 px-1 rounded">UPS/26-0001</code>,&nbsp;
+            <code className="bg-gray-100 px-1 rounded">AIR/26-0002</code>, etc.
+          </p>
+          <div className="flex items-end gap-3 max-w-xs">
+            <div className="flex-1 space-y-1">
+              <Label className="text-xs">Próximo número</Label>
+              <Input
+                type="number"
+                min="1"
+                placeholder="1"
+                value={consecValue}
+                onChange={e => setConsecValue(e.target.value)}
+                className="text-sm h-9"
+              />
+            </div>
             <Button
-              onClick={copiarLicencia}
-              className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+              onClick={guardarConsecutivo}
+              disabled={consecSaving}
+              className={`h-9 px-4 text-sm ${consecSaved ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-800'} text-white`}
             >
-              {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              {copied ? 'Copiado' : 'Copiar'}
+              {consecSaved ? <CheckCircle className="w-4 h-4" /> : 'Guardar'}
             </Button>
           </div>
-          <p className="text-xs text-gray-400 mt-2">
-            Comparte esta clave con los técnicos para que puedan crear su cuenta.
+        </div>
+
+        {/* Importar desde Excel */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
+            <Upload className="w-4 h-4" /> Importar desde Excel
+          </h2>
+          <p className="text-xs text-gray-400 mb-5">
+            Descarga la plantilla de cada tipo, llénala y súbela.
+            Los equipos se vinculan al cliente por el nombre exacto en la columna <code className="bg-gray-100 px-1 rounded">company</code>.
+            El QR se asigna automáticamente si la celda viene vacía.
           </p>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+
+            {/* ── Tarjeta Clientes ── */}
+            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-700">Clientes</p>
+                <button
+                  onClick={descargarPlantillaClientes}
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  <Download className="w-3 h-3" /> Plantilla
+                </button>
+              </div>
+              <p className="text-xs text-gray-400">
+                Columnas: <code className="bg-gray-100 px-1 rounded">company, contact, address, email, city, phone</code>
+              </p>
+              <input ref={fileClientesRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={handleImportClientes} id="xl-clientes" />
+              <label htmlFor="xl-clientes">
+                <Button asChild disabled={importandoClientes}
+                  className="relative w-full bg-blue-600 hover:bg-blue-700 text-white text-sm cursor-pointer overflow-hidden">
+                  <span>
+                    {importandoClientes && (
+                      <span className="absolute inset-0 bg-blue-400/40 transition-all duration-300 rounded-md" style={{ width: `${progresoCl}%` }} />
+                    )}
+                    <span className="relative flex items-center justify-center gap-2">
+                      {importandoClientes
+                        ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> {progresoCl < 100 ? `${progresoCl}%` : '¡Listo!'}</>
+                        : <><Upload className="w-4 h-4" /> Subir clientes</>}
+                    </span>
+                  </span>
+                </Button>
+              </label>
+              {resultClientes && (
+                <div className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${resultClientes.errores === 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                  <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>
+                    <strong>{resultClientes.ok}</strong> importados
+                    {resultClientes.errores > 0 && <>, <strong>{resultClientes.errores}</strong> con error</>}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* ── Tarjeta Equipos ── */}
+            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-700">Equipos</p>
+                <button
+                  onClick={descargarPlantillaEquipos}
+                  className="text-xs text-green-600 hover:underline flex items-center gap-1"
+                >
+                  <Download className="w-3 h-3" /> Plantilla
+                </button>
+              </div>
+              <p className="text-xs text-gray-400">
+                Columnas: <code className="bg-gray-100 px-1 rounded">serial, company, brand, model, capacity, ubicacion, qr_code</code>
+              </p>
+              <input ref={fileEquiposRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={handleImportEquipos} id="xl-equipos" />
+              <label htmlFor="xl-equipos">
+                <Button asChild disabled={importandoEquipos}
+                  className="relative w-full bg-green-600 hover:bg-green-700 text-white text-sm cursor-pointer overflow-hidden">
+                  <span>
+                    {importandoEquipos && (
+                      <span className="absolute inset-0 bg-green-400/40 transition-all duration-300 rounded-md" style={{ width: `${progresoEq}%` }} />
+                    )}
+                    <span className="relative flex items-center justify-center gap-2">
+                      {importandoEquipos
+                        ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> {progresoEqTexto || `${progresoEq}%`}</>
+                        : <><Upload className="w-4 h-4" /> Subir equipos</>}
+                    </span>
+                  </span>
+                </Button>
+              </label>
+              {resultEquipos && (
+                <div className={`text-xs rounded-lg ${resultEquipos.errores === 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                  <div className="flex items-center gap-2 px-3 py-1.5">
+                    <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>
+                      <strong>{resultEquipos.ok}</strong> importados
+                      {resultEquipos.errores > 0 && <>, <strong>{resultEquipos.errores}</strong> con error</>}
+                    </span>
+                  </div>
+                  {resultEquipos.detalle && resultEquipos.detalle.length > 0 && (
+                    <ul className="px-3 pb-2 space-y-0.5 border-t border-amber-200">
+                      {resultEquipos.detalle.map((msg, i) => (
+                        <li key={i} className="text-amber-800">• {msg}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+
+        {/* Backup */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
+            <DatabaseBackup className="w-4 h-4" /> Backup de datos
+          </h2>
+          <p className="text-xs text-gray-400 mb-5">
+            Descarga toda la información de tu empresa en un archivo Excel con cuatro hojas:
+            <strong> Clientes</strong>, <strong>Equipos</strong>, <strong>Informes</strong> y <strong>Usuarios</strong>.
+          </p>
+          <Button
+            onClick={generarBackup}
+            disabled={generandoBackup}
+            className={`relative overflow-hidden flex items-center gap-2 ${backupOk ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-900'} text-white`}
+          >
+            {generandoBackup && (
+              <span className="absolute inset-0 bg-white/20 transition-all duration-500 rounded-md" style={{ width: `${backupPct}%` }} />
+            )}
+            <span className="relative flex items-center gap-2">
+              {generandoBackup ? (
+                <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {backupProgreso || 'Generando…'} {backupPct > 0 && `(${backupPct}%)`}</>
+              ) : backupOk ? (
+                <><CheckCircle className="w-4 h-4" /> ¡Descargado!</>
+              ) : (
+                <><Download className="w-4 h-4" /> Descargar backup (ZIP + PDFs)</>
+              )}
+            </span>
+          </Button>
         </div>
 
         {/* Usuarios */}

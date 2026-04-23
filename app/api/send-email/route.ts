@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
   if (!apiKey) return NextResponse.json({ error: 'Servicio de correo no configurado' }, { status: 503 })
   const resend = new Resend(apiKey)
   try {
-    const { to, subject, clientName, technicianName, date, pdfBase64, pdfUrl, filename, companyName } = await req.json()
+    const { to, subject, clientName, technicianName, date, pdfBase64, pdfUrl, filename, companyName, companyEmail } = await req.json()
 
     if (!to || (!pdfBase64 && !pdfUrl)) {
       return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 })
@@ -27,8 +27,15 @@ export async function POST(req: NextRequest) {
       pdfBuffer = Buffer.from(pdfBase64, 'base64')
     }
 
+    // Construir el from con el nombre de la empresa pero usando el dominio verificado
+    const verifiedFrom = process.env.RESEND_FROM ?? 'comercial@ionenergy.com.co'
+    const fromAddress = companyName
+      ? `${companyName} <${verifiedFrom}>`
+      : `Notificaciones <${verifiedFrom}>`
+
     const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM ?? 'Ion Energy <comercial@ionenergy.com.co>',
+      from: fromAddress,
+      replyTo: companyEmail ?? undefined,
       to: [to],
       subject: subject ?? 'Reporte Técnico',
       attachments: [{ filename: filename ?? 'reporte_tecnico.pdf', content: pdfBuffer, contentType: 'application/pdf' }],

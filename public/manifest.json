@@ -1,7 +1,7 @@
 {
-  "name": "Ion Energy - Reportes Técnicos",
-  "short_name": "Ion Energy",
-  "description": "Sistema de reportes técnicos para Ion Energy S.A.S",
+  "name": "Informes Técnicos",
+  "short_name": "InformesTec",
+  "description": "Sistema de reportes técnicos para equipos de energía",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f3f4f6",
@@ -19,13 +19,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/icons/screenshot.png",
-      "sizes": "1280x720",
-      "type": "image/png"
     }
   ]
 }

@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
-import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, actualizarPdfUrl, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, siguienteNumeroInforme, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
+import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, actualizarPdfUrl, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, siguienteNumeroInforme, formatearNumeroInforme, obtenerNumeroActual, siguienteQrEquipo, buscarEquipoPorSerial, validarEmailCliente, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
+import { queueInforme } from '@/lib/offline-queue'
 import AireParams from './AireParams'
 import PlantaParams from './PlantaParams'
 import FotovoltaicoParams from './FotovoltaicoParams'
@@ -403,54 +404,72 @@ const ElectricalInputGroup = ({ title, fields, values, onChange }: { title: stri
 
 // Optimized Photo handling component
 const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<string, any>; setFormData: React.Dispatch<React.SetStateAction<any>>; isMobile: boolean }) => {
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef  = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [processingPhoto, setProcessingPhoto] = useState(false);
 
-  const processAndAddPhoto = useCallback((file: File, fromCamera: boolean) => {
-    if (file.size > 10 * 1024 * 1024) {
-      alert('El archivo es muy grande. Máximo 10MB.');
+  const processAndAddPhoto = useCallback((file: File) => {
+    if (file.size > 30 * 1024 * 1024) {
+      alert('El archivo es muy grande. Máximo 30MB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result;
-      if (!result) return;
-      const img = new Image();
-      img.onload = () => {
-        const MAX_W = 800, MAX_H = 600;
-        const ratio = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
-        const canvas = document.createElement('canvas');
-        canvas.width  = Math.round(img.width  * ratio);
-        canvas.height = Math.round(img.height * ratio);
-        const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const url = canvas.toDataURL('image/jpeg', 0.60);
-        const newPhoto: Photo = { id: Date.now() + Math.random(), url, description: '' };
 
-        setFormData((prev: Record<string, any>) => {
-          const updated = { ...prev, photos: [...(prev.photos || []), newPhoto] };
-          savePhotosIDB(updated.photos).catch(() => {});
-          return updated;
-        });
+    setProcessingPhoto(true);
 
-        // Descarga automática solo en móvil/tablet (en desktop no aplica)
-        if (fromCamera && isMobile) downloadPhoto(url, (formData.photos?.length ?? 0));
-      };
-      img.onerror = () => alert('No se pudo cargar la imagen.');
-      img.src = typeof result === 'string' ? result : '';
+    // createObjectURL es mucho más rápido que FileReader en iOS Safari
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      // Ceder el hilo al navegador antes de las operaciones pesadas de canvas
+      // Esto evita el "cuelga" en iPhones con fotos de alta resolución
+      setTimeout(() => {
+        try {
+          const MAX_W = 1200, MAX_H = 900;
+          const ratio = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
+          const w = Math.round(img.width  * ratio);
+          const h = Math.round(img.height * ratio);
+          const canvas = document.createElement('canvas');
+          canvas.width  = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d')!;
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          URL.revokeObjectURL(objectUrl);           // liberar memoria
+          const url = canvas.toDataURL('image/jpeg', 0.70);
+          const newPhoto: Photo = { id: Date.now() + Math.random(), url, description: '' };
+          setFormData((prev: Record<string, any>) => {
+            const updated = { ...prev, photos: [...(prev.photos || []), newPhoto] };
+            savePhotosIDB(updated.photos).catch(() => {});
+            return updated;
+          });
+        } catch {
+          alert('Error al procesar la imagen. Intenta con otra foto.');
+        } finally {
+          setProcessingPhoto(false);
+        }
+      }, 30);
     };
-    reader.readAsDataURL(file);
-  }, [setFormData, formData.photos]);
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      setProcessingPhoto(false);
+      alert('No se pudo cargar la imagen.');
+    };
+
+    img.src = objectUrl;
+  }, [setFormData]);
 
   const handleCamera  = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (file) processAndAddPhoto(file, true);
+    const file = e.target.files?.[0]; if (file) processAndAddPhoto(file);
     e.target.value = '';
   }, [processAndAddPhoto]);
 
   const handleGallery = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (file) processAndAddPhoto(file, false);
+    const files = Array.from(e.target.files ?? []);
+    // Procesar en serie con pequeño delay entre cada una para no saturar el hilo
+    files.forEach((file, i) => setTimeout(() => processAndAddPhoto(file), i * 100));
     e.target.value = '';
   }, [processAndAddPhoto]);
 
@@ -481,15 +500,38 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
   const content = (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <Button type="button" onClick={() => cameraInputRef.current?.click()}
-          className="bg-blue-600 hover:bg-blue-700 text-white">
-          <Camera className="w-4 h-4 mr-2" /> Tomar Foto
+        {/* En iOS, capture="environment" puede abrir la vista previa del sistema —
+            usamos un input SIN capture para dar al usuario la opción cámara/galería
+            directamente desde el selector nativo de iOS, que es más estable */}
+        <Button
+          type="button"
+          disabled={processingPhoto}
+          onClick={() => cameraInputRef.current?.click()}
+          className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60"
+        >
+          {processingPhoto
+            ? <><span className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> Procesando…</>
+            : <><Camera className="w-4 h-4 mr-2" /> Tomar / Adjuntar Foto</>
+          }
         </Button>
-        {/* Cámara — descarga automática al tomar en móvil */}
-        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment"
-          className="hidden" onChange={handleCamera} />
-        <input ref={galleryInputRef} type="file" accept="image/*"
-          className="hidden" onChange={handleGallery} />
+
+        {/* Un solo input sin capture — iOS muestra menú: Tomar foto / Elegir de biblioteca */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*,image/heic,image/heif"
+          className="hidden"
+          onChange={handleCamera}
+        />
+        {/* Galería explícita para desktop / Android */}
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleGallery}
+        />
         {(formData.photos?.length > 0) && (
           <span className="text-xs text-gray-400">{formData.photos.length} foto(s)</span>
         )}
@@ -625,41 +667,43 @@ const ChecklistSection = ({ checkedItems, onCheckChange }: { checkedItems: strin
           </div>
         </div>
 
-        {/* Groups */}
-        {groups.map((group) => {
-          const groupDone = group.items.filter(i => checked.includes(i)).length;
-          return (
-            <div key={group.title} className="border rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2 bg-gray-50">
-                <span className="text-sm font-medium text-gray-700">{group.title}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                  {groupDone}/{group.items.length}
-                </span>
+        {/* Groups — grid horizontal igual que AireParams/PlantaParams */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {groups.map((group) => {
+            const groupDone = group.items.filter(i => checked.includes(i)).length;
+            return (
+              <div key={group.title} className="border rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
+                  <span className="text-xs font-medium text-gray-700">{group.title}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                    {groupDone}/{group.items.length}
+                  </span>
+                </div>
+                <div className="divide-y">
+                  {group.items.map((item: string) => {
+                    const isChecked = checked.includes(item);
+                    return (
+                      <label
+                        key={item}
+                        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50 transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleItem(item)}
+                          className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
+                        />
+                        <span className={`text-xs ${isChecked ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                          {item}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="divide-y">
-                {group.items.map((item: string) => {
-                  const isChecked = checked.includes(item);
-                  return (
-                    <label
-                      key={item}
-                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleItem(item)}
-                        className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
-                      />
-                      <span className={`text-sm ${isChecked ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                        {item}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </CollapsibleSection>
   );
@@ -952,10 +996,7 @@ const TIPO_PREFIX: Record<string, string> = {
   ups: 'UPS', aire: 'AIR', planta: 'PLT', fotovoltaico: 'FTV', otros: 'OTR',
 }
 
-const fmtReportNum = (n: number, tipo = 'ups') => {
-  const prefix = TIPO_PREFIX[tipo] ?? 'RPT'
-  return `${prefix}-${String(n).padStart(4, '0')}`
-};
+const fmtReportNum = (n: number, tipo = 'ups') => formatearNumeroInforme(n, tipo);
 
 const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { technician: string; empresaId?: string; onLogout?: () => void; externalToken?: string }) => {
   const [formData, setFormData] = useState<FormData>({});
@@ -972,6 +1013,10 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
   const [emailTo, setEmailTo] = useState('');
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [emailError, setEmailError] = useState('');
+  const [emailValidando, setEmailValidando] = useState(false);
+  const [emailValidez, setEmailValidez] = useState<'idle' | 'ok' | 'error'>('idle');
+  const [emailValidezNombre, setEmailValidezNombre] = useState('');
+  const emailValidDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shareAction, setShareAction] = useState<'download' | 'email' | 'whatsapp'>('download');
 
   // Autocomplete Supabase
@@ -1100,7 +1145,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
   const handleClientCompanyChange = useCallback(async (value: string) => {
     handleFieldChange('clientCompany', value)
     if (value.length < 2) { setClientSuggestions([]); return }
-    const results = await buscarClientes(value)
+    const results = await buscarClientes(value, empresaId)
     setClientSuggestions(results)
     setShowClientSug(results.length > 0)
   }, [handleFieldChange])
@@ -1121,11 +1166,37 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
   // ── Autocomplete equipos Supabase ─────────────────────────
   const handleEquipmentSerialChange = useCallback(async (value: string) => {
     handleFieldChange('equipmentSerial', value)
+    // Limpiar QR si el serial es borrado
+    if (!value.trim()) {
+      handleFieldChange('qrCode', '')
+      setEquipmentSuggestions([])
+      return
+    }
     if (value.length < 2) { setEquipmentSuggestions([]); return }
-    const results = await buscarEquipos(value)
+    const results = await buscarEquipos(value, empresaId)
     setEquipmentSuggestions(results)
     setShowEquipmentSug(results.length > 0)
   }, [handleFieldChange])
+
+  // Cuando el serial pierde el foco y no hay equipo seleccionado, auto-generar QR
+  const handleEquipmentSerialBlur = useCallback(async () => {
+    setTimeout(async () => {
+      setShowEquipmentSug(false)
+      const serial = String(formData.equipmentSerial ?? '').trim()
+      const currentQr = String(formData.qrCode ?? '').trim()
+      if (!serial || currentQr) return // ya tiene QR o no hay serial
+      // Buscar si existe en BD
+      const found = await buscarEquipoPorSerial(serial, empresaId).catch(() => null)
+      if (found) {
+        // Equipo ya existe — cargar todos sus datos
+        await selectEquipment(found)
+      } else if (empresaId) {
+        // Equipo nuevo — generar siguiente QR
+        const nextQr = await siguienteQrEquipo(empresaId).catch(() => '')
+        if (nextQr) handleFieldChange('qrCode', nextQr)
+      }
+    }, 200)
+  }, [formData, empresaId])
 
   const selectEquipment = useCallback(async (eq: EquipoRecord) => {
     setFormData(prev => ({
@@ -1180,15 +1251,25 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
         phone:   config.telefono         ?? '',
         email:   config.email_contacto   ?? '',
       })
-      if (config.logo && !logo) {
-        // Comprimir logo al cargarlo desde la config de empresa
+      if (config.logo) {
+        // Siempre cargar el logo de la empresa desde la DB (evita contaminación entre empresas)
         compressImage(config.logo, 400, 200, 0.7).then(compressed => {
           setLogo(compressed)
           localStorage.setItem('apptech_logo', compressed)
         })
+      } else {
+        // Si la empresa no tiene logo, limpiar cualquier logo de otra empresa en caché
+        setLogo('')
+        localStorage.removeItem('apptech_logo')
       }
     })
   }, [empresaId]);
+
+  // Cargar el número de informe actual desde Supabase (solo lectura, sin incrementar)
+  useEffect(() => {
+    if (!empresaId || externalToken || !navigator.onLine) return
+    obtenerNumeroActual(empresaId).then(n => setReportNumber(n)).catch(() => {})
+  }, [empresaId, externalToken]);
 
   const electricalParameters = {
     inputVoltage: [
@@ -1247,9 +1328,9 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
     const fecha    = new Date().toLocaleDateString('es-CO')
     let savedInformeId: string | undefined
 
-    // Obtener número consecutivo atómico desde la BD (solo usuarios autenticados)
+    // Obtener número consecutivo atómico desde la BD (solo cuando hay conexión)
     let activeReportNum = reportNumber
-    if (!externalToken && empresaId) {
+    if (!externalToken && empresaId && navigator.onLine) {
       try {
         const next = await siguienteNumeroInforme(empresaId, formData.reportType ?? 'ups')
         activeReportNum = next
@@ -1318,7 +1399,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
             client_id: savedClientId,
           }).catch(() => {})
         }
-        const informeResult = await guardarInforme({
+        const informePayload = {
           qr_code: qrCodeId || undefined,
           numero_informe: repNum,
           fecha, cliente: client, serial, marca: brand,
@@ -1328,9 +1409,34 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
           empresa_id: empresaId,
           observaciones:   String(formData.description    ?? '').trim() || undefined,
           recomendaciones: String(formData.recommendations ?? '').trim() || undefined,
-        }).catch(() => ({ ok: false as const }))
-        if (informeResult.ok && informeResult.id) {
-          savedInformeId = informeResult.id
+        }
+        if (!navigator.onLine) {
+          // Offline: queue for later sync
+          await queueInforme({
+            id: crypto.randomUUID(),
+            createdAt: Date.now(),
+            informe: {
+              qr_code: informePayload.qr_code,
+              fecha: informePayload.fecha,
+              cliente: informePayload.cliente,
+              serial: informePayload.serial,
+              marca: informePayload.marca,
+              modelo: informePayload.modelo,
+              capacidad: informePayload.capacidad,
+              ubicacion: informePayload.ubicacion,
+              tecnico: informePayload.tecnico,
+              equipo_id: informePayload.equipo_id,
+              tipo_reporte: informePayload.tipo_reporte,
+              observaciones: informePayload.observaciones,
+              recomendaciones: informePayload.recomendaciones,
+            },
+            empresa_id: empresaId ?? '',
+          }).catch(() => {})
+        } else {
+          const informeResult = await guardarInforme(informePayload).catch(() => ({ ok: false as const }))
+          if (informeResult.ok && informeResult.id) {
+            savedInformeId = informeResult.id
+          }
         }
       }
     } catch (_e) { /* Supabase opcional */ }
@@ -1449,12 +1555,28 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
     // Company info (derecha, con espacio para QR a su derecha)
     const qrSize = 18
     const companyX = pageWidth - margin - qrSize - 3
-    pdf.setFontSize(11);
+    // Ancho máximo disponible para el bloque de empresa (desde la mitad de la página + margen)
+    const companyMaxW = companyX - (pageWidth / 2 + 8)
+
+    // Nombre de empresa: ajustar tamaño y partir en líneas si es largo
     pdf.setFont('helvetica', 'bold');
-    pdf.text(companyInfo.name, companyX, yPosition + 5, { align: 'right' });
+    let nameFontSize = 10
+    pdf.setFontSize(nameFontSize);
+    let nameLines = pdf.splitTextToSize(companyInfo.name, companyMaxW)
+    // Si no cabe en 2 líneas con 10pt, reducir a 8pt
+    if (nameLines.length > 2) {
+      nameFontSize = 8
+      pdf.setFontSize(nameFontSize);
+      nameLines = pdf.splitTextToSize(companyInfo.name, companyMaxW)
+    }
+    const lineH = nameFontSize * 0.45
+    nameLines.forEach((line: string, i: number) => {
+      pdf.text(line, companyX, yPosition + 5 + (i * lineH), { align: 'right' })
+    })
+
     pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
-    let ciY = yPosition + 10
+    let ciY = yPosition + 5 + (nameLines.length * lineH) + 2
     if (companyInfo.address) { pdf.text(companyInfo.address, companyX, ciY, { align: 'right' }); ciY += 4 }
     if (companyInfo.phone)   { pdf.text(companyInfo.phone,   companyX, ciY, { align: 'right' }); ciY += 4 }
     if (companyInfo.email)   { pdf.text(companyInfo.email,   companyX, ciY, { align: 'right' }); ciY += 4 }
@@ -2077,35 +2199,8 @@ yPosition += 8;
     // Add section divider
     addSectionDivider();
 
-    // Description Section
-    if (formData.description) {
-      checkPageBreak(20);
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('DESCRIPCIÓN DEL TRABAJO', margin, yPosition);
-      yPosition += 8;
-
-      yPosition = addText(String(formData.description ?? ''), margin, yPosition, contentWidth, { fontSize: 9 });
-      yPosition += 5;
-    }
-
-    // Recommendations Section
-    if (formData.recommendations) {
-      // Add section divider
-      addSectionDivider();
-      
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('RECOMENDACIONES', margin, yPosition);
-      yPosition += 8;
-
-      yPosition = addText(String(formData.recommendations ?? ''), margin, yPosition, contentWidth, { fontSize: 9 });
-      yPosition += 5;
-    }
-
-    // Photos Section — comprimir fotos antes de incrustar en PDF
+    // Photos Section — ANTES de descripción y recomendaciones
     const rawPhotos: Photo[] = emailPhotosRef.current ?? (formData.photos ?? [])
-    // PDF photo slot ≈ 87mm × 45mm → 776×400 px (same ratio), crop con posición del usuario
     const photosToRender: Photo[] = await Promise.all(
       rawPhotos.map(async (p) => ({
         ...p,
@@ -2115,73 +2210,52 @@ yPosition += 8;
       }))
     )
     if (photosToRender.length > 0) {
-      // Add section divider
       addSectionDivider();
-      
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
       pdf.text('REGISTRO FOTOGRÁFICO', margin, yPosition);
       yPosition += 10;
 
-      // Calculate dimensions for 2 photos per row
-      const photoMargin = 5; // Space between photos
+      const photoMargin = 5;
       const availableWidth = contentWidth - photoMargin;
       const photoWidth = availableWidth / 2;
-      const photoHeight = 45; // Fixed height for consistency
-      const descriptionHeight = 10; // Reduced from 15 to 10
-      const rowSpacing = 3; // Reduced spacing between rows
+      const photoHeight = 45;
+      const descriptionHeight = 10;
+      const rowSpacing = 3;
 
       for (let i = 0; i < photosToRender.length; i += 2) {
         const photo1 = photosToRender[i];
-        const photo2 = photosToRender[i + 1]; // Might be undefined for odd number of photos
-        
-        // Nueva página si no hay espacio (considera footer de 15mm)
+        const photo2 = photosToRender[i + 1];
+
         if (yPosition + photoHeight + descriptionHeight > pageHeight - margin - 15) {
           pdf.addPage();
           yPosition = margin;
         }
 
         try {
-          // First photo (left)
           if (typeof photo1.url === 'string') {
             const photo1X = margin;
-            
-            // Add photo
             pdf.addImage(photo1.url, 'JPEG', photo1X, yPosition, photoWidth, photoHeight);
-            
-            // Add photo description below the image
             if (photo1.description) {
               pdf.setFontSize(8);
               pdf.setFont('helvetica', 'bold');
-              const descriptionLines = pdf.splitTextToSize(photo1.description, photoWidth);
+              const lines = pdf.splitTextToSize(photo1.description, photoWidth);
               let descY = yPosition + photoHeight + 8;
-              descriptionLines.forEach((line: string, lineIndex: number) => {
-                if (lineIndex < 1) {
-                  pdf.text(line, photo1X + (photoWidth / 2), descY, { align: 'center' });
-                  descY += 3;
-                }
+              lines.forEach((line: string, idx: number) => {
+                if (idx < 1) { pdf.text(line, photo1X + photoWidth / 2, descY, { align: 'center' }); descY += 3; }
               });
             }
           }
-
-          // Second photo (right) - only if it exists
           if (photo2 && typeof photo2.url === 'string') {
             const photo2X = margin + photoWidth + photoMargin;
-            
-            // Add photo
             pdf.addImage(photo2.url, 'JPEG', photo2X, yPosition, photoWidth, photoHeight);
-            
-            // Add photo description below the image
             if (photo2.description) {
               pdf.setFontSize(8);
               pdf.setFont('helvetica', 'bold');
-              const descriptionLines = pdf.splitTextToSize(photo2.description, photoWidth);
+              const lines = pdf.splitTextToSize(photo2.description, photoWidth);
               let descY = yPosition + photoHeight + 8;
-              descriptionLines.forEach((line: string, lineIndex: number) => {
-                if (lineIndex < 1) {
-                  pdf.text(line, photo2X + (photoWidth / 2), descY, { align: 'center' });
-                  descY += 3;
-                }
+              lines.forEach((line: string, idx: number) => {
+                if (idx < 1) { pdf.text(line, photo2X + photoWidth / 2, descY, { align: 'center' }); descY += 3; }
               });
             }
           }
@@ -2189,9 +2263,32 @@ yPosition += 8;
           console.warn(`Could not add photos ${i + 1}${photo2 ? ` and ${i + 2}` : ''} to PDF`);
         }
 
-        // Move to next row position with reduced spacing
         yPosition += photoHeight + descriptionHeight + rowSpacing;
       }
+    }
+
+    // Description Section
+    if (formData.description) {
+      addSectionDivider();
+      checkPageBreak(20);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('DESCRIPCIÓN DEL TRABAJO', margin, yPosition);
+      yPosition += 8;
+      yPosition = addText(String(formData.description ?? ''), margin, yPosition, contentWidth, { fontSize: 9 });
+      yPosition += 5;
+    }
+
+    // Recommendations Section
+    if (formData.recommendations) {
+      addSectionDivider();
+      checkPageBreak(20);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('RECOMENDACIONES', margin, yPosition);
+      yPosition += 8;
+      yPosition = addText(String(formData.recommendations ?? ''), margin, yPosition, contentWidth, { fontSize: 9 });
+      yPosition += 5;
     }
 
     // Signatures Section
@@ -2274,9 +2371,9 @@ yPosition += 8;
       addFooter(i, totalPages);
     }
 
-    // Subir PDF a Supabase Storage y guardar la URL en el informe
+    // Subir PDF a Supabase Storage (solo cuando hay conexión)
     let pdfUrl: string | null = null
-    if (empresaId && !externalToken) {
+    if (empresaId && !externalToken && navigator.onLine) {
       try {
         const arrayBuffer = pdf.output('arraybuffer')
         pdfUrl = await uploadReportePdf(arrayBuffer, empresaId, filename)
@@ -2315,9 +2412,81 @@ yPosition += 8;
     })
   }, [])
 
+  // Validación en tiempo real del correo en el modal
+  const handleEmailToChange = useCallback((value: string) => {
+    setEmailTo(value);
+    setEmailValidez('idle');
+    setEmailValidezNombre('');
+    if (emailValidDebounce.current) clearTimeout(emailValidDebounce.current);
+    if (!value.trim() || !empresaId) return;
+    emailValidDebounce.current = setTimeout(async () => {
+      setEmailValidando(true);
+      const res = await validarEmailCliente(value.trim(), empresaId);
+      setEmailValidando(false);
+      if (res.valido) {
+        setEmailValidez('ok');
+        setEmailValidezNombre(res.nombre ?? '');
+      } else {
+        setEmailValidez('error');
+      }
+    }, 500);
+  }, [empresaId]);
+
   const handleEmailSend = useCallback(async () => {
     const target = emailTo.trim() || String(formData.clientEmail ?? '').trim();
     if (!target) { setShowEmailModal(true); return; }
+
+    // Sin conexión: intentar Web Share API (menú nativo del dispositivo)
+    if (!navigator.onLine) {
+      setEmailStatus('sending');
+      setIsLoading(true);
+      try {
+        const { pdf, filename } = await buildPDF();
+        const arrayBuffer = pdf.output('arraybuffer');
+        const file = new File([arrayBuffer], filename, { type: 'application/pdf' });
+
+        // Web Share API con archivo — funciona en iOS Safari y Android Chrome
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: filename.replace('.pdf', ''),
+            text: `Reporte técnico para ${target}`,
+            files: [file],
+          });
+          // Si el usuario compartió exitosamente, limpiar el formulario
+          setShowEmailModal(false);
+          setFormData((prev: FormData) => ({
+            technicianSelect: prev.technicianSelect,
+            technicianName:   prev.technicianName,
+            technicianId:     prev.technicianId,
+          }));
+          setEmailTo('');
+          setEmailValidez('idle');
+          setEmailValidezNombre('');
+          clearPhotosIDB().catch(() => {});
+          setEmailStatus('sent');
+          setTimeout(() => setEmailStatus('idle'), 3000);
+        } else {
+          // Fallback: descarga directa si el dispositivo no soporta Web Share con archivos
+          pdf.save(filename);
+          setEmailError('PDF descargado. Adjúntalo manualmente en tu app de correo.');
+          setEmailStatus('error');
+          setTimeout(() => { setEmailStatus('idle'); setEmailError(''); }, 8000);
+        }
+      } catch (e: unknown) {
+        // El usuario canceló el share — no es un error real
+        if (e instanceof Error && e.name !== 'AbortError') {
+          setEmailError('No se pudo compartir el PDF. Intenta cuando tengas conexión.');
+          setEmailStatus('error');
+          setTimeout(() => { setEmailStatus('idle'); setEmailError(''); }, 6000);
+        } else {
+          setEmailStatus('idle');
+        }
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     setEmailStatus('sending');
     setIsLoading(true);
     try {
@@ -2357,6 +2526,7 @@ yPosition += 8;
           clientName: formData.clientContact ?? formData.clientCompany,
           technicianName: formData.technicianName ?? technician,
           companyName: companyInfo.name,
+          companyEmail: companyInfo.email,
           date: currentDate,
           pdfUrl,
           pdfBase64,
@@ -2367,6 +2537,22 @@ yPosition += 8;
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setEmailStatus('sent');
       setShowEmailModal(false);
+
+      // Limpiar formulario igual que al descargar PDF
+      setFormData((prev: FormData) => ({
+        technicianSelect: prev.technicianSelect,
+        technicianName:   prev.technicianName,
+        technicianId:     prev.technicianId,
+      }));
+      setShowHistorial(false);
+      setHistorial([]);
+      setHistorialTab(0);
+      setSelectedEquipoId(null);
+      setEmailTo('');
+      setEmailValidez('idle');
+      setEmailValidezNombre('');
+      clearPhotosIDB().catch(() => {});
+
       setTimeout(() => setEmailStatus('idle'), 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
@@ -2476,25 +2662,9 @@ yPosition += 8;
               <div className="space-y-1">
                 <div className="flex items-center justify-center">
                   <span className="text-lg font-medium mr-2">N° Reporte:</span>
-                  {isEditingReportNumber ? (
-                    <input
-                      type="number"
-                      min="1"
-                      value={reportNumber}
-                      onChange={handleReportNumberChange}
-                      onBlur={() => setIsEditingReportNumber(false)}
-                      autoFocus
-                      className="w-20 text-center border rounded p-1"
-                    />
-                  ) : (
-                    <div 
-                      onClick={() => setIsEditingReportNumber(true)}
-                      className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded flex items-center transition-colors"
-                    >
-                      <span className="font-medium text-red-500">{fmtReportNum(reportNumber, formData.reportType ?? 'ups')}</span>
-                      <Pen className="w-3 h-3 ml-1 text-gray-500" />
-                    </div>
-                  )}
+                  <span className="font-medium text-red-500 px-2 py-1 bg-gray-50 rounded">
+                    {fmtReportNum(reportNumber, formData.reportType ?? 'ups')}
+                  </span>
                 </div>
                 <div className="text-sm text-gray-600">Fecha: {currentDate} — {currentTime}</div>
                 <div className="text-xs h-4" style={{ color: saveStatus === 'saved' ? '#16a34a' : '#9ca3af' }}>
@@ -2625,7 +2795,19 @@ yPosition += 8;
                 </div>
               </div>
             </CollapsibleSection>
-            
+
+            {/* Lista de Actividades — todos los tipos, justo después del cliente */}
+            {(!formData.reportType || formData.reportType === 'ups') && (
+              <ChecklistSection
+                checkedItems={formData.checkedItems || []}
+                onCheckChange={(items) => handleFieldChange('checkedItems', items)}
+              />
+            )}
+            {formData.reportType === 'aire'         && <AireParams         formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'planta'       && <PlantaParams       formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'fotovoltaico' && <FotovoltaicoParams formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'otros'        && <OtrosParams        formData={formData} onChange={handleFieldChange} />}
+
             {/* Información del Servicio */}
             <ServiceInfoSection
               formData={formData}
@@ -2644,14 +2826,6 @@ yPosition += 8;
               formData={formData}
               setFormData={setFormData}
             />
-
-            {/* Checklist de Actividades — solo UPS */}
-            {(!formData.reportType || formData.reportType === 'ups') && (
-              <ChecklistSection
-                checkedItems={formData.checkedItems || []}
-                onCheckChange={(items) => handleFieldChange('checkedItems', items)}
-              />
-            )}
 
             {/* Service Details */}
             <CollapsibleSection title="Detalles del Equipo" icon={Wrench}>
@@ -2692,7 +2866,7 @@ yPosition += 8;
                       id="equipmentSerial"
                       value={String(formData.equipmentSerial ?? '')}
                       onChange={(e) => handleEquipmentSerialChange(e.target.value)}
-                      onBlur={() => setTimeout(() => setShowEquipmentSug(false), 150)}
+                      onBlur={handleEquipmentSerialBlur}
                       placeholder="Número de serie"
                       autoComplete="off"
                     />
@@ -2723,13 +2897,19 @@ yPosition += 8;
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="qrCode">Código QR</Label>
-                  <Input
-                    id="qrCode"
-                    value={String(formData.qrCode ?? '')}
-                    onChange={(e) => handleFieldChange('qrCode', e.target.value.toUpperCase())}
-                    placeholder="Ej: QR-001"
-                  />
+                  <Label htmlFor="qrCode">Código QR <span className="text-xs text-gray-400">(auto)</span></Label>
+                  <div className="relative">
+                    <Input
+                      id="qrCode"
+                      value={String(formData.qrCode ?? '')}
+                      readOnly
+                      placeholder="Se genera al ingresar serial"
+                      className="bg-gray-50 text-gray-600 cursor-default"
+                    />
+                    {formData.qrCode && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-green-600 font-medium">✓</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </CollapsibleSection>
@@ -2843,12 +3023,6 @@ yPosition += 8;
                 </div>
               </div>
             )}
-
-            {/* Parámetros específicos por tipo */}
-            {formData.reportType === 'aire'         && <AireParams         formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'planta'       && <PlantaParams       formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'fotovoltaico' && <FotovoltaicoParams formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'otros'        && <OtrosParams        formData={formData} onChange={handleFieldChange} />}
 
             {/* Parámetros Eléctricos — solo UPS */}
             {(!formData.reportType || formData.reportType === 'ups') && (
@@ -3049,6 +3223,13 @@ yPosition += 8;
               </div>
             </CollapsibleSection>}
 
+            {/* Photos */}
+            <PhotosSection
+              formData={formData}
+              setFormData={setFormData}
+              isMobile={isMobile}
+            />
+
             {/* Description and Recommendations */}
             <CollapsibleSection title="Descripción y Recomendaciones" icon={FileText}>
               <div className="space-y-4">
@@ -3077,13 +3258,6 @@ yPosition += 8;
                 </div>
               </div>
             </CollapsibleSection>
-
-            {/* Photos */}
-            <PhotosSection 
-              formData={formData} 
-              setFormData={setFormData}
-              isMobile={isMobile} 
-            />
             
             {/* Signatures */}
             <CollapsibleSection title="Firmas" icon={Pen}>
@@ -3201,39 +3375,68 @@ yPosition += 8;
                   <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                     <Mail className="w-5 h-5 text-blue-600" /> Enviar por correo
                   </h3>
+
                   <div className="space-y-1">
                     <label className="text-sm text-gray-600">Correo del destinatario</label>
-                    <Input
-                      type="email"
-                      value={emailTo}
-                      onChange={e => setEmailTo(e.target.value)}
-                      placeholder="cliente@empresa.com"
-                      autoFocus
-                    />
+                    <div className="relative">
+                      <Input
+                        type="email"
+                        value={emailTo}
+                        onChange={e => handleEmailToChange(e.target.value)}
+                        placeholder="cliente@empresa.com"
+                        autoFocus
+                        className={
+                          emailValidez === 'ok'    ? 'border-green-400 pr-8' :
+                          emailValidez === 'error' ? 'border-red-400 pr-8'   : 'pr-8'
+                        }
+                      />
+                      {/* Indicador de validación */}
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm">
+                        {emailValidando && (
+                          <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin inline-block" />
+                        )}
+                        {!emailValidando && emailValidez === 'ok'    && <span className="text-green-500">✓</span>}
+                        {!emailValidando && emailValidez === 'error' && <span className="text-red-500">✗</span>}
+                      </span>
+                    </div>
+
+                    {/* Mensaje de validación */}
+                    {emailValidez === 'ok' && emailValidezNombre && (
+                      <p className="text-xs text-green-600 flex items-center gap-1">
+                        <span>✓</span> Registrado como: <strong>{emailValidezNombre}</strong>
+                      </p>
+                    )}
+                    {emailValidez === 'error' && (
+                      <p className="text-xs text-orange-500">
+                        Correo no encontrado en clientes — se enviará de todas formas.
+                      </p>
+                    )}
                   </div>
+
                   {emailStatus === 'error' && (
                     <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{emailError || 'Error al enviar'}</p>
                   )}
                   {emailStatus === 'sent' && (
                     <p className="text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">✓ Correo enviado correctamente.</p>
                   )}
+
                   <div className="flex gap-3">
                     <Button
                       type="button"
-                      onClick={() => setShowEmailModal(false)}
+                      onClick={() => { setShowEmailModal(false); setEmailValidez('idle'); setEmailTo(''); }}
                       className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700"
                     >
                       Cancelar
                     </Button>
                     <Button
                       type="button"
-                      disabled={emailStatus === 'sending' || !emailTo.trim()}
+                      disabled={emailStatus === 'sending' || !emailTo.trim() || emailValidando}
                       onClick={handleEmailSend}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
                     >
                       {emailStatus === 'sending' ? (
                         <div className="flex items-center gap-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                           Enviando…
                         </div>
                       ) : 'Enviar'}

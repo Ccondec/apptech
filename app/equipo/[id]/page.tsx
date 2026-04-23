@@ -3,10 +3,11 @@ import type { Metadata } from 'next'
 import { CheckCircle, Hash, User, Tag, Cpu, Zap, MapPin, ClipboardList, AlertCircle } from 'lucide-react'
 import HistorialTabs from './HistorialTabs'
 
-const supabase = createClient(
-  'https://deouxnumhspmollumsoz.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRlb3V4bnVtaHNwbW9sbHVtc296Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MzU1MDIsImV4cCI6MjA5MjAxMTUwMn0.V4nWluFT7-7zN7y8TCpnOAu01bhMeKpG4eZCc-8eFGw'
-)
+// Usar service role para que RLS no bloquee la consulta pública del QR
+function getAdmin() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  return createClient('https://deouxnumhspmollumsoz.supabase.co', key)
+}
 
 interface Props {
   params: Promise<{ id: string }>
@@ -34,11 +35,48 @@ export default async function EquipoPage({ params }: Props) {
   const { id } = await params
   const qrCode = decodeURIComponent(id)
 
-  const { data: informes, error } = await supabase
+  const admin = getAdmin()
+
+  // Buscar equipo por QR exacto; si no existe, buscar por sufijo (compatibilidad con QR antiguos)
+  let resolvedQr = qrCode
+  let { data: equipo } = await admin
+    .from('equipos')
+    .select('empresa_id, qr_code')
+    .eq('qr_code', qrCode)
+    .maybeSingle()
+
+  if (!equipo) {
+    // QR antiguo (ej: EQ-0001) — buscar equipo cuyo qr_code termina en ese sufijo
+    const { data: equipoFallback } = await admin
+      .from('equipos')
+      .select('empresa_id, qr_code')
+      .ilike('qr_code', `%-${qrCode}`)
+      .maybeSingle()
+    if (equipoFallback) {
+      equipo = equipoFallback
+      resolvedQr = equipoFallback.qr_code // usar el QR actualizado
+    }
+  }
+
+  // Filtrar informes por qr_code (nuevo o viejo) Y empresa_id
+  const query = admin
     .from('informes')
     .select('*')
-    .eq('qr_code', qrCode)
     .order('created_at', { ascending: false })
+
+  if (equipo?.empresa_id) {
+    // Buscar por QR actualizado O por QR viejo (ambos pueden estar en informes)
+    query.eq('empresa_id', equipo.empresa_id)
+    if (resolvedQr !== qrCode) {
+      query.or(`qr_code.eq.${resolvedQr},qr_code.eq.${qrCode}`)
+    } else {
+      query.eq('qr_code', resolvedQr)
+    }
+  } else {
+    query.eq('qr_code', qrCode)
+  }
+
+  const { data: informes, error } = await query
 
   if (error || !informes || informes.length === 0) {
     return (

@@ -11,6 +11,7 @@ interface AuthContextType {
   session: Session | null
   user: AuthUser | null
   loading: boolean
+  mustChangePassword: boolean
   signOut: () => Promise<void>
 }
 
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   loading: true,
+  mustChangePassword: false,
   signOut: async () => {},
 })
 
@@ -25,8 +27,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
-  const inflightRef = useRef(false)   // evita queries concurrentes
-  const lastUserIdRef = useRef<string | null>(null) // evita recargar el mismo usuario
+  const [mustChangePassword, setMustChangePassword] = useState(false)
+  const inflightRef = useRef(false)
+  const lastUserIdRef = useRef<string | null>(null)
 
   async function loadUser(s: Session | null) {
     if (!s) { setUser(null); setLoading(false); lastUserIdRef.current = null; return }
@@ -53,8 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!error && data) {
       lastUserIdRef.current = s.user.id
       setUser(data as AuthUser)
+      setMustChangePassword(data.must_change_password === true)
     } else {
       setUser(null)
+      setMustChangePassword(false)
       lastUserIdRef.current = null
     }
 
@@ -82,11 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut()
     setSession(null)
     setUser(null)
+    setMustChangePassword(false)
     lastUserIdRef.current = null
   }
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, loading, mustChangePassword, signOut }}>
       {children}
     </AuthContext.Provider>
   )

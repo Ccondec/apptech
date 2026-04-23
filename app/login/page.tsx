@@ -36,9 +36,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-green-600 text-white mb-4 shadow-lg">
-            <Zap className="w-9 h-9" />
-          </div>
+          <img src="/icons/icon-192x192.png" className="w-20 h-20 rounded-2xl object-contain shadow-lg mx-auto mb-4" alt="Logo" />
           <p className="text-sm text-gray-500 mt-1">Sistema de Informes Técnicos</p>
         </div>
 
@@ -94,7 +92,10 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-4 text-center">
+          <div className="mt-4 space-y-2 text-center">
+            <a href="/recuperar" className="block text-sm text-gray-400 hover:text-gray-600">
+              ¿Olvidaste tu contraseña?
+            </a>
             <p className="text-sm text-gray-500">
               ¿No tienes cuenta?{' '}
               <a href="/registro" className="text-green-600 font-medium hover:underline">

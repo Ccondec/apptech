@@ -82,6 +82,43 @@ export default function FotovoltaicoParams({ formData, onChange }: Props) {
 
   return (
     <>
+      {/* Checklist FV — primero, igual que UPS */}
+      <CollapsibleSection title="Lista de Actividades" icon={CheckSquare}>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>{checkedItems.length} de {totalItems} actividades completadas</span>
+              <span className="font-medium text-green-600">{pct}%</span>
+            </div>
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {CHECKLIST_GROUPS.map(group => {
+              const done = group.items.filter(i => checkedItems.includes(i)).length
+              return (
+                <div key={group.title} className="border rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
+                    <span className="text-xs font-medium text-gray-700">{group.title}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700">{done}/{group.items.length}</span>
+                  </div>
+                  <div className="divide-y">
+                    {group.items.map(item => (
+                      <label key={item} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                        <input type="checkbox" checked={checkedItems.includes(item)} onChange={() => toggleItem(item)}
+                          className="h-4 w-4 text-green-600 rounded border-gray-300" />
+                        <span className={`text-xs ${checkedItems.includes(item) ? 'line-through text-gray-400' : 'text-gray-700'}`}>{item}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </CollapsibleSection>
+
       {/* Especificaciones sistema fotovoltaico */}
       <CollapsibleSection title="Especificaciones del Sistema Fotovoltaico" icon={Sun}>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -174,43 +211,6 @@ export default function FotovoltaicoParams({ formData, onChange }: Props) {
           <NumField id="pvBattSOC"      label="Estado de carga"  unit="%"  value={String(formData.pvBattSOC      ?? '')} onChange={v => onChange('pvBattSOC',      v)} />
           <NumField id="pvBattCurrent"  label="Corriente carga"  unit="A"  value={String(formData.pvBattCurrent  ?? '')} onChange={v => onChange('pvBattCurrent',  v)} />
           <NumField id="pvBattTemp"     label="Temperatura"      unit="°C" value={String(formData.pvBattTemp     ?? '')} onChange={v => onChange('pvBattTemp',     v)} />
-        </div>
-      </CollapsibleSection>
-
-      {/* Checklist FV */}
-      <CollapsibleSection title="Lista de Actividades" icon={CheckSquare}>
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>{checkedItems.length} de {totalItems} actividades completadas</span>
-              <span className="font-medium text-green-600">{pct}%</span>
-            </div>
-            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {CHECKLIST_GROUPS.map(group => {
-              const done = group.items.filter(i => checkedItems.includes(i)).length
-              return (
-                <div key={group.title} className="border rounded-lg overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
-                    <span className="text-xs font-medium text-gray-700">{group.title}</span>
-                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700">{done}/{group.items.length}</span>
-                  </div>
-                  <div className="divide-y">
-                    {group.items.map(item => (
-                      <label key={item} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
-                        <input type="checkbox" checked={checkedItems.includes(item)} onChange={() => toggleItem(item)}
-                          className="h-4 w-4 text-green-600 rounded border-gray-300" />
-                        <span className={`text-xs ${checkedItems.includes(item) ? 'line-through text-gray-400' : 'text-gray-700'}`}>{item}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
         </div>
       </CollapsibleSection>
 

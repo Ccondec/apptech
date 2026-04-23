@@ -23,10 +23,10 @@ export async function POST(req: NextRequest) {
     if (!tokenData.activo) return NextResponse.json({ error: 'Enlace desactivado' }, { status: 401 })
     if (new Date(tokenData.expires_at) < new Date()) return NextResponse.json({ error: 'Enlace expirado' }, { status: 401 })
 
-    // Obtener número consecutivo atómico para técnico externo
+    // Obtener número consecutivo atómico — contador único global por empresa
     const { data: nextNum } = await admin.rpc('siguiente_numero_informe', {
       p_empresa_id: tokenData.empresa_id,
-      p_tipo: informe.tipo_reporte ?? 'ups',
+      p_tipo: 'global',
     })
     const TIPO_PREFIX: Record<string, string> = {
       ups: 'UPS', aire: 'AIR', planta: 'PLT', fotovoltaico: 'FTV', otros: 'OTR',
@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
     const numeroConsecutivo = nextNum ?? 1
     const tipo = String(informe.tipo_reporte ?? 'ups')
     const prefix = TIPO_PREFIX[tipo] ?? 'RPT'
-    const numero_informe = `${prefix}-${String(numeroConsecutivo).padStart(4, '0')}`
+    const yy = String(new Date().getFullYear()).slice(-2)
+    const numero_informe = `${prefix}-${yy}${String(numeroConsecutivo).padStart(4, '0')}`
 
     // Save informe with atomic number
     const { error: informeErr } = await admin.from('informes').insert({
