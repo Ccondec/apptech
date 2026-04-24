@@ -89,13 +89,17 @@ export default function AdminPage() {
   const cargarUsuarios = useCallback(async () => {
     if (!user) return
     setLoadingUsers(true)
-    const { data, error } = await supabase
-      .from('usuarios')
-      .select('*')
-      .eq('empresa_id', user.empresa_id)
-      .order('nombre', { ascending: true })
-    if (error) console.error('cargarUsuarios:', error)
-    setUsuarios(data ?? [])
+    try {
+      const res = await fetch(`/api/listar-usuarios?empresa_id=${user.empresa_id}`)
+      const json = await res.json()
+      if (res.ok) {
+        setUsuarios(json.usuarios ?? [])
+      } else {
+        console.error('cargarUsuarios:', json.error)
+      }
+    } catch (err) {
+      console.error('cargarUsuarios:', err)
+    }
     setLoadingUsers(false)
   }, [user])
 
@@ -120,7 +124,7 @@ export default function AdminPage() {
   }
 
   const copiarEnlaceToken = (tokenId: string) => {
-    navigator.clipboard.writeText(`https://apptech-one.vercel.app/form/${tokenId}`)
+    navigator.clipboard.writeText(`https://snelapp.com/form/${tokenId}`)
     setCopiedTokenId(tokenId)
     setTimeout(() => setCopiedTokenId(null), 2000)
   }

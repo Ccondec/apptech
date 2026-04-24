@@ -1370,8 +1370,8 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
     try {
       const QRCode = await import('qrcode')
       const qrText = qrCodeId
-        ? `https://apptech-one.vercel.app/equipo/${encodeURIComponent(qrCodeId)}`
-        : `https://apptech-one.vercel.app/informe?n=${repNum}&fecha=${encodeURIComponent(fecha)}&cliente=${encodeURIComponent(client)}`
+        ? `https://snelapp.com/equipo/${encodeURIComponent(qrCodeId)}`
+        : `https://snelapp.com/informe?n=${repNum}&fecha=${encodeURIComponent(fecha)}&cliente=${encodeURIComponent(client)}`
       const canvas = document.createElement('canvas')
       await QRCode.toCanvas(canvas, qrText, {
         width: 200, margin: 2, errorCorrectionLevel: 'M',
@@ -3187,7 +3187,7 @@ yPosition += 8;
       pdf.save(filename);
 
       const qr = String(formData.qrCode ?? '').trim();
-      const link = qr ? `\n🔗 apptech-one.vercel.app/equipo/${qr}` : '';
+      const link = qr ? `\n🔗 snelapp.com/equipo/${qr}` : '';
       const text =
         `*Reporte Técnico — ${companyInfo.name}*\n` +
         `📋 Cliente: ${formData.clientCompany ?? ''}\n` +
