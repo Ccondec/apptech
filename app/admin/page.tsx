@@ -109,21 +109,24 @@ export default function AdminPage() {
     setCreateError('')
     setCreating(true)
 
-    // Crear en Supabase Auth
-    const { data: authData, error: authErr } = await supabase.auth.admin?.createUser({
-      email: newUserEmail,
-      password: newUserPass,
-      email_confirm: true,
-    }) as any
-
-    if (authErr || !authData?.user) {
-      // Fallback: usar la función de registro normal (invita al usuario)
-      const { error } = await supabase.auth.signUp({
+    const res = await fetch('/api/crear-usuario', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         email: newUserEmail,
         password: newUserPass,
-        options: { data: { nombre: newUserNombre } },
-      })
-      if (error) { setCreateError(error.message); setCreating(false); return }
+        nombre: newUserNombre,
+        rol: newUserRol,
+        empresa_id: user!.empresa_id,
+      }),
+    })
+
+    const json = await res.json()
+
+    if (!res.ok) {
+      setCreateError(json.error ?? 'Error al crear usuario')
+      setCreating(false)
+      return
     }
 
     setCreating(false)
@@ -184,8 +187,11 @@ export default function AdminPage() {
       setProgresoCl(60)
       setResultClientes(filas.length > 0 ? await importarClientes(filas) : { ok: 0, errores: 0 })
       setProgresoCl(100)
-    } catch { setResultClientes({ ok: 0, errores: 1 }); setProgresoCl(100) }
-    finally { setImportandoClientes(false); setTimeout(() => setProgresoCl(0), 800) }
+    } catch (err) {
+      console.error('Import clientes error:', err)
+      alert(`Error al importar clientes: ${err instanceof Error ? err.message : String(err)}`)
+      setResultClientes({ ok: 0, errores: 1 }); setProgresoCl(100)
+    } finally { setImportandoClientes(false); setTimeout(() => setProgresoCl(0), 800) }
   }
 
   // ── Importar archivo de equipos ──────────────────────────────
@@ -214,8 +220,11 @@ export default function AdminPage() {
       })
       setResultEquipos(filas.length > 0 ? result : { ok: 0, errores: 0 })
       setProgresoEq(100); setProgresoEqTexto('¡Listo!')
-    } catch { setResultEquipos({ ok: 0, errores: 1 }); setProgresoEq(100) }
-    finally { setImportandoEquipos(false); setTimeout(() => { setProgresoEq(0); setProgresoEqTexto('') }, 800) }
+    } catch (err) {
+      console.error('Import equipos error:', err)
+      alert(`Error al importar equipos: ${err instanceof Error ? err.message : String(err)}`)
+      setResultEquipos({ ok: 0, errores: 1 }); setProgresoEq(100)
+    } finally { setImportandoEquipos(false); setTimeout(() => { setProgresoEq(0); setProgresoEqTexto('') }, 800) }
   }
 
   // ── Backup ───────────────────────────────────────────────────
@@ -429,22 +438,18 @@ export default function AdminPage() {
               <p className="text-xs text-gray-400">
                 Columnas: <code className="bg-gray-100 px-1 rounded">company, contact, address, email, city, phone</code>
               </p>
-              <input ref={fileClientesRef} type="file" accept=".xlsx,.xls" className="hidden"
-                onChange={handleImportClientes} id="xl-clientes" />
-              <label htmlFor="xl-clientes">
-                <Button asChild disabled={importandoClientes}
-                  className="relative w-full bg-blue-600 hover:bg-blue-700 text-white text-sm cursor-pointer overflow-hidden">
-                  <span>
-                    {importandoClientes && (
-                      <span className="absolute inset-0 bg-blue-400/40 transition-all duration-300 rounded-md" style={{ width: `${progresoCl}%` }} />
-                    )}
-                    <span className="relative flex items-center justify-center gap-2">
-                      {importandoClientes
-                        ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> {progresoCl < 100 ? `${progresoCl}%` : '¡Listo!'}</>
-                        : <><Upload className="w-4 h-4" /> Subir clientes</>}
-                    </span>
-                  </span>
-                </Button>
+              <input ref={fileClientesRef} type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                className="hidden" onChange={handleImportClientes} id="xl-clientes" />
+              <label htmlFor="xl-clientes" className={`relative flex items-center justify-center gap-2 w-full h-9 rounded-md text-sm font-medium text-white overflow-hidden cursor-pointer select-none transition-colors ${importandoClientes ? 'bg-blue-400 pointer-events-none' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                {importandoClientes && (
+                  <span className="absolute left-0 top-0 h-full bg-blue-500 transition-all duration-300" style={{ width: `${progresoCl}%` }} />
+                )}
+                <span className="relative flex items-center gap-2">
+                  {importandoClientes
+                    ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> {progresoCl < 100 ? `${progresoCl}%` : '¡Listo!'}</>
+                    : <><Upload className="w-4 h-4" /> Subir clientes</>}
+                </span>
               </label>
               {resultClientes && (
                 <div className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${resultClientes.errores === 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
@@ -471,22 +476,18 @@ export default function AdminPage() {
               <p className="text-xs text-gray-400">
                 Columnas: <code className="bg-gray-100 px-1 rounded">serial, company, brand, model, capacity, ubicacion, qr_code</code>
               </p>
-              <input ref={fileEquiposRef} type="file" accept=".xlsx,.xls" className="hidden"
-                onChange={handleImportEquipos} id="xl-equipos" />
-              <label htmlFor="xl-equipos">
-                <Button asChild disabled={importandoEquipos}
-                  className="relative w-full bg-green-600 hover:bg-green-700 text-white text-sm cursor-pointer overflow-hidden">
-                  <span>
-                    {importandoEquipos && (
-                      <span className="absolute inset-0 bg-green-400/40 transition-all duration-300 rounded-md" style={{ width: `${progresoEq}%` }} />
-                    )}
-                    <span className="relative flex items-center justify-center gap-2">
-                      {importandoEquipos
-                        ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> {progresoEqTexto || `${progresoEq}%`}</>
-                        : <><Upload className="w-4 h-4" /> Subir equipos</>}
-                    </span>
-                  </span>
-                </Button>
+              <input ref={fileEquiposRef} type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                className="hidden" onChange={handleImportEquipos} id="xl-equipos" />
+              <label htmlFor="xl-equipos" className={`relative flex items-center justify-center gap-2 w-full h-9 rounded-md text-sm font-medium text-white overflow-hidden cursor-pointer select-none transition-colors ${importandoEquipos ? 'bg-green-400 pointer-events-none' : 'bg-green-600 hover:bg-green-700'}`}>
+                {importandoEquipos && (
+                  <span className="absolute left-0 top-0 h-full bg-green-500 transition-all duration-300" style={{ width: `${progresoEq}%` }} />
+                )}
+                <span className="relative flex items-center gap-2">
+                  {importandoEquipos
+                    ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> {progresoEqTexto || `${progresoEq}%`}</>
+                    : <><Upload className="w-4 h-4" /> Subir equipos</>}
+                </span>
               </label>
               {resultEquipos && (
                 <div className={`text-xs rounded-lg ${resultEquipos.errores === 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>

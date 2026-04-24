@@ -37,8 +37,8 @@ export default function CambiarPasswordPage() {
       setSaving(false)
       return
     }
-    // Redirigir al inicio — el flag must_change_password ya quedó en false
-    router.push('/')
+    // Hard reload para forzar reinicio del AuthContext con must_change_password = false
+    window.location.replace('/')
   }
 
   if (loading || !user) return null

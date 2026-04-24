@@ -88,11 +88,18 @@ export async function solicitarRecuperacion(email: string): Promise<{ ok: boolea
 export async function actualizarPassword(newPassword: string): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.auth.updateUser({ password: newPassword })
   if (error) return { ok: false, error: error.message }
-  // Limpiar el flag de cambio obligatorio
-  const session = await getSession()
-  if (session) {
-    await supabase.from('usuarios').update({ must_change_password: false }).eq('id', session.user.id)
-  }
+
+  // Limpiar el flag via API route (service role bypasa RLS)
+  try {
+    const session = await getSession()
+    if (session) {
+      await fetch('/api/clear-must-change-password', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
+    }
+  } catch (_) { /* no crítico */ }
+
   return { ok: true }
 }
 
