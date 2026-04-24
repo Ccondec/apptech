@@ -2,12 +2,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { getEmpresaConfig, updateEmpresaConfig } from '@/lib/supabase'
+import { getEmpresaConfig, updateEmpresaConfig, listarMarcas, guardarMarca, actualizarMarca, eliminarMarca, MarcaRecord } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import DraggableLogo from '@/components/ui/DraggableLogo'
-import { ArrowLeft, Building2, Save, Upload, X } from 'lucide-react'
+import { ArrowLeft, Building2, Save, Upload } from 'lucide-react'
 
 function compressImage(dataUrl: string, maxW: number, maxH: number, quality: number): Promise<string> {
   return new Promise(resolve => {
@@ -46,6 +46,19 @@ export default function ConfiguracionPage() {
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
 
+  // Marcas
+  const [marcas, setMarcas] = useState<MarcaRecord[]>([])
+  const [marcaNombre, setMarcaNombre] = useState('')
+  const [marcaDireccion, setMarcaDireccion] = useState('')
+  const [marcaCiudad, setMarcaCiudad] = useState('')
+  const [marcaTelefono, setMarcaTelefono] = useState('')
+  const [marcaEmail, setMarcaEmail] = useState('')
+  const [marcaLogoPreview, setMarcaLogoPreview] = useState<string | null>(null)
+  const [marcaLogoBase64, setMarcaLogoBase64] = useState<string | null>(null)
+  const [savingMarca, setSavingMarca] = useState(false)
+  const [editingMarca, setEditingMarca] = useState<MarcaRecord | null>(null)
+  const marcaLogoRef = useRef<HTMLInputElement>(null)
+
   // Cargar pos/zoom guardados en localStorage
   useEffect(() => {
     try {
@@ -62,6 +75,14 @@ export default function ConfiguracionPage() {
     if (!loading && !user) { router.push('/login'); return }
     if (!loading && user?.rol !== 'admin') { router.push('/'); return }
   }, [loading, user, router])
+
+  const cargarMarcas = useCallback(async () => {
+    if (!user?.empresa_id) return
+    const data = await listarMarcas(user.empresa_id)
+    setMarcas(data)
+  }, [user])
+
+  useEffect(() => { cargarMarcas() }, [cargarMarcas])
 
   useEffect(() => {
     if (!user?.empresa_id) return
@@ -243,6 +264,156 @@ export default function ConfiguracionPage() {
             {saving ? 'Guardando…' : 'Guardar configuración'}
           </Button>
         </form>
+        {/* Marcas / Empresas Representadas */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
+          <div>
+            <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2">🏷️ Marcas / Empresas Representadas</h2>
+            <p className="text-xs text-gray-400 mt-1">Empresas a cuyo nombre emites informes. Al generar un PDF podrás elegir qué marca aparece en el encabezado.</p>
+          </div>
+
+          {/* Lista */}
+          {marcas.length > 0 && (
+            <div className="divide-y divide-gray-50">
+              {marcas.map(m => (
+                <div key={m.id} className="flex items-center gap-3 py-3">
+                  {m.logo_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.logo_url} alt={m.nombre} className="w-12 h-8 object-contain rounded border border-gray-100 bg-gray-50 p-1" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800">{m.nombre}</p>
+                    <p className="text-xs text-gray-400">{[m.ciudad, m.telefono, m.email].filter(Boolean).join(' · ')}</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setEditingMarca(m)
+                        setMarcaNombre(m.nombre)
+                        setMarcaDireccion(m.direccion ?? '')
+                        setMarcaCiudad(m.ciudad ?? '')
+                        setMarcaTelefono(m.telefono ?? '')
+                        setMarcaEmail(m.email ?? '')
+                        setMarcaLogoPreview(m.logo_url)
+                        setMarcaLogoBase64(m.logo_url)
+                      }}
+                      className="text-xs text-blue-500 hover:text-blue-700"
+                    >Editar</button>
+                    <button
+                      onClick={async () => { await eliminarMarca(m.id); cargarMarcas() }}
+                      className="text-xs text-red-400 hover:text-red-600"
+                    >Eliminar</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Formulario */}
+          <div className="border border-dashed border-gray-200 rounded-xl p-4 space-y-4">
+            <p className="text-xs font-semibold text-gray-600">{editingMarca ? 'Editar marca' : 'Agregar marca'}</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Nombre de la empresa *</Label>
+                <Input placeholder="Ej: Bancolombia, EPM, Hospital San José…" value={marcaNombre} onChange={e => setMarcaNombre(e.target.value)} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label>Dirección</Label>
+                <Input placeholder="Ej: Cra 7 # 71-21" value={marcaDireccion} onChange={e => setMarcaDireccion(e.target.value)} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label>Ciudad</Label>
+                <Input placeholder="Ej: Bogotá" value={marcaCiudad} onChange={e => setMarcaCiudad(e.target.value)} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label>Teléfono</Label>
+                <Input placeholder="Ej: +57 601 234 5678" value={marcaTelefono} onChange={e => setMarcaTelefono(e.target.value)} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label>Correo de contacto</Label>
+                <Input type="email" placeholder="contacto@empresa.com" value={marcaEmail} onChange={e => setMarcaEmail(e.target.value)} className="text-sm" />
+              </div>
+            </div>
+
+            {/* Logo */}
+            <div className="space-y-1">
+              <Label>Logo</Label>
+              <div className="flex items-center gap-3">
+                {marcaLogoPreview && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={marcaLogoPreview} alt="logo" className="h-12 object-contain rounded border border-gray-100 bg-gray-50 p-1" />
+                )}
+                <button
+                  type="button"
+                  onClick={() => marcaLogoRef.current?.click()}
+                  className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:bg-gray-50"
+                >
+                  <Upload className="w-4 h-4" />
+                  {marcaLogoPreview ? 'Cambiar logo' : 'Subir logo'}
+                </button>
+                <input
+                  ref={marcaLogoRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = async ev => {
+                      const b64 = ev.target?.result as string
+                      const compressed = await compressImage(b64, 400, 200, 0.7)
+                      setMarcaLogoPreview(compressed)
+                      setMarcaLogoBase64(compressed)
+                    }
+                    reader.readAsDataURL(file)
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                type="button"
+                disabled={savingMarca || !marcaNombre.trim()}
+                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={async () => {
+                  if (!marcaNombre.trim() || !user) return
+                  setSavingMarca(true)
+                  const campos = {
+                    nombre: marcaNombre.trim(),
+                    logo_url: marcaLogoBase64,
+                    direccion: marcaDireccion.trim() || undefined,
+                    ciudad: marcaCiudad.trim() || undefined,
+                    telefono: marcaTelefono.trim() || undefined,
+                    email: marcaEmail.trim() || undefined,
+                  }
+                  if (editingMarca) {
+                    await actualizarMarca(editingMarca.id, campos)
+                  } else {
+                    await guardarMarca(user.empresa_id, campos)
+                  }
+                  setMarcaNombre(''); setMarcaDireccion(''); setMarcaCiudad('')
+                  setMarcaTelefono(''); setMarcaEmail('')
+                  setMarcaLogoPreview(null); setMarcaLogoBase64(null)
+                  setEditingMarca(null); setSavingMarca(false)
+                  cargarMarcas()
+                }}
+              >
+                {savingMarca ? 'Guardando…' : editingMarca ? 'Actualizar' : 'Guardar marca'}
+              </Button>
+              {editingMarca && (
+                <Button
+                  type="button" variant="outline"
+                  onClick={() => {
+                    setEditingMarca(null)
+                    setMarcaNombre(''); setMarcaDireccion(''); setMarcaCiudad('')
+                    setMarcaTelefono(''); setMarcaEmail('')
+                    setMarcaLogoPreview(null); setMarcaLogoBase64(null)
+                  }}
+                >Cancelar</Button>
+              )}
+            </div>
+          </div>
+        </div>
+
       </main>
     </div>
   )

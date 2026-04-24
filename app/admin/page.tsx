@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { supabase, Usuario, importarClientes, importarEquipos, setConsecutivoInicial, ImportEquipoRow } from '@/lib/supabase'
+import { supabase, Usuario, importarClientes, importarEquipos, setConsecutivoInicial, ImportEquipoRow, ClienteRecord } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -41,10 +41,45 @@ export default function AdminPage() {
   const [resultClientes, setResultClientes] = useState<{ ok: number; errores: number } | null>(null)
   const [resultEquipos,  setResultEquipos]  = useState<{ ok: number; errores: number; detalle?: string[] } | null>(null)
 
+  // Búsqueda de cliente para rol cliente
+  const [clienteSearch, setClienteSearch] = useState('')
+  const [clienteResults, setClienteResults] = useState<ClienteRecord[]>([])
+  const [clienteSearching, setClienteSearching] = useState(false)
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+
+  useEffect(() => {
+    if (!clienteSearch.trim() || newUserRol !== 'cliente') {
+      setClienteResults([])
+      return
+    }
+    const timer = setTimeout(async () => {
+      if (!user) return
+      setClienteSearching(true)
+      const { data } = await supabase
+        .from('clientes')
+        .select('id, company, contact, city')
+        .eq('empresa_id', user.empresa_id)
+        .ilike('company', `%${clienteSearch}%`)
+        .limit(10)
+      setClienteResults((data as ClienteRecord[]) ?? [])
+      setClienteSearching(false)
+      setShowClienteDropdown(true)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [clienteSearch, newUserRol, user])
+
+  const seleccionarCliente = (c: ClienteRecord) => {
+    setNewUserClientCompany(c.company)
+    setClienteSearch(c.company)
+    setShowClienteDropdown(false)
+    setClienteResults([])
+  }
+
   // Consecutivo global único
   const [consecValue, setConsecValue] = useState('')
   const [consecSaving, setConsecSaving] = useState(false)
   const [consecSaved, setConsecSaved] = useState(false)
+
 
   useEffect(() => {
     if (!loading && !user) { router.push('/login'); return }
@@ -54,16 +89,18 @@ export default function AdminPage() {
   const cargarUsuarios = useCallback(async () => {
     if (!user) return
     setLoadingUsers(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('usuarios')
       .select('*')
       .eq('empresa_id', user.empresa_id)
-      .order('created_at', { ascending: false })
+      .order('nombre', { ascending: true })
+    if (error) console.error('cargarUsuarios:', error)
     setUsuarios(data ?? [])
     setLoadingUsers(false)
   }, [user])
 
   useEffect(() => { cargarUsuarios() }, [cargarUsuarios])
+
 
   const cargarTokens = useCallback(async () => {
     const data = await listarFormTokens()
@@ -134,6 +171,7 @@ export default function AdminPage() {
     setCreating(false)
     setCreateSuccess(true)
     setNewUserEmail(''); setNewUserNombre(''); setNewUserPass(''); setNewUserClientCompany('')
+    setClienteSearch(''); setShowClienteDropdown(false); setClienteResults([])
     setTimeout(() => setCreateSuccess(false), 3000)
     cargarUsuarios()
   }
@@ -619,14 +657,47 @@ export default function AdminPage() {
             {newUserRol === 'cliente' && (
               <div className="col-span-2 space-y-1">
                 <Label htmlFor="newClientCompany">Empresa del cliente</Label>
-                <Input
-                  id="newClientCompany"
-                  value={newUserClientCompany}
-                  onChange={e => setNewUserClientCompany(e.target.value)}
-                  placeholder="Nombre exacto del cliente en los informes (ej: ORTOCLINICA)"
-                  required
-                />
-                <p className="text-xs text-gray-400">Debe coincidir exactamente con el nombre usado en los informes.</p>
+                <div className="relative">
+                  <Input
+                    id="newClientCompany"
+                    value={clienteSearch}
+                    onChange={e => {
+                      setClienteSearch(e.target.value)
+                      setNewUserClientCompany(e.target.value)
+                      if (!e.target.value) setShowClienteDropdown(false)
+                    }}
+                    onFocus={() => clienteResults.length > 0 && setShowClienteDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowClienteDropdown(false), 150)}
+                    placeholder="Buscar empresa del cliente…"
+                    autoComplete="off"
+                    required
+                  />
+                  {clienteSearching && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {showClienteDropdown && clienteResults.length > 0 && (
+                    <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                      {clienteResults.map(c => (
+                        <li
+                          key={c.id}
+                          onMouseDown={() => seleccionarCliente(c)}
+                          className="px-3 py-2.5 cursor-pointer hover:bg-gray-50 border-b border-gray-50 last:border-0"
+                        >
+                          <p className="text-sm font-medium text-gray-800">{c.company}</p>
+                          {(c.contact || c.city) && (
+                            <p className="text-xs text-gray-400">{[c.contact, c.city].filter(Boolean).join(' · ')}</p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {showClienteDropdown && clienteResults.length === 0 && clienteSearch.trim().length > 1 && !clienteSearching && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2.5">
+                      <p className="text-sm text-gray-400">No se encontraron clientes</p>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400">Escribe para buscar · el nombre debe coincidir con el usado en los informes.</p>
               </div>
             )}
             {createError && <p className="col-span-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{createError}</p>}
@@ -707,6 +778,8 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+
+
 
       </main>
     </div>

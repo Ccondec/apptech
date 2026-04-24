@@ -50,6 +50,19 @@ export interface ClienteRecord {
   phone?: string
 }
 
+export interface MarcaRecord {
+  id: string
+  empresa_id: string
+  nombre: string
+  logo_url: string | null
+  telefono?: string | null
+  direccion?: string | null
+  ciudad?: string | null
+  email?: string | null
+  activo: boolean
+  created_at: string
+}
+
 export interface EquipoRecord {
   id: string
   empresa_id: string
@@ -652,4 +665,47 @@ export async function importarEquipos(filas: ImportEquipoRow[], onProgress?: (do
   }
 
   return { ok, errores, detalle }
+}
+
+// ── Marcas (empresas representadas) ──────────────────────────
+
+export async function listarMarcas(empresaId: string): Promise<MarcaRecord[]> {
+  const { data } = await supabase
+    .from('marcas')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('activo', true)
+    .order('nombre')
+  return data ?? []
+}
+
+export async function guardarMarca(
+  empresaId: string,
+  campos: { nombre: string; logo_url: string | null; telefono?: string; direccion?: string; ciudad?: string; email?: string }
+): Promise<MarcaRecord | null> {
+  const { data } = await supabase
+    .from('marcas')
+    .insert({ empresa_id: empresaId, ...campos })
+    .select()
+    .single()
+  return data ?? null
+}
+
+export async function actualizarMarca(
+  id: string,
+  campos: { nombre: string; logo_url: string | null; telefono?: string; direccion?: string; ciudad?: string; email?: string }
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('marcas')
+    .update(campos)
+    .eq('id', id)
+  return !error
+}
+
+export async function eliminarMarca(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('marcas')
+    .update({ activo: false })
+    .eq('id', id)
+  return !error
 }

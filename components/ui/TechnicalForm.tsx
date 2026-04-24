@@ -1,17 +1,18 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
-import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, actualizarPdfUrl, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, siguienteNumeroInforme, formatearNumeroInforme, obtenerNumeroActual, siguienteQrEquipo, buscarEquipoPorSerial, validarEmailCliente, ClienteRecord, EquipoRecord, InformeRecord } from '@/lib/supabase'
+import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, actualizarPdfUrl, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, siguienteNumeroInforme, formatearNumeroInforme, obtenerNumeroActual, siguienteQrEquipo, buscarEquipoPorSerial, validarEmailCliente, listarMarcas, ClienteRecord, EquipoRecord, InformeRecord, MarcaRecord } from '@/lib/supabase'
 import { queueInforme } from '@/lib/offline-queue'
 import AireParams from './AireParams'
 import PlantaParams from './PlantaParams'
 import FotovoltaicoParams from './FotovoltaicoParams'
 import OtrosParams from './OtrosParams'
 import ImpresoraParams from './ImpresoraParams'
+import ApantallamientoParams from './ApantallamientoParams'
 
 type Photo = { id: number; url: string; description: string; posX?: number; posY?: number };
 type MaterialRow = { id: string; item: string; qty: string; ref: string };
-type ReportType = 'ups' | 'aire' | 'planta' | 'fotovoltaico' | 'otros' | 'impresora';
+type ReportType = 'ups' | 'aire' | 'planta' | 'fotovoltaico' | 'otros' | 'impresora' | 'apantallamiento';
 
 // ── IndexedDB: persistencia de fotos ────────────────────────
 const IDB_NAME = 'apptech_db'
@@ -166,8 +167,9 @@ const REPORT_TYPES: { id: ReportType; label: string; icon: string }[] = [
   { id: 'aire',         label: 'Aires Acondicionados', icon: '❄️' },
   { id: 'planta',       label: 'Plantas Eléctricas',   icon: '⚡' },
   { id: 'fotovoltaico', label: 'Sistema Fotovoltaico', icon: '☀️' },
-  { id: 'impresora',    label: 'Impresoras',           icon: '🖨️' },
-  { id: 'otros',        label: 'Otros Informes',       icon: '📋' },
+  { id: 'impresora',        label: 'Impresoras',           icon: '🖨️' },
+  { id: 'apantallamiento', label: 'Apantallamiento',      icon: '⛈️' },
+  { id: 'otros',           label: 'Otros Informes',       icon: '📋' },
 ];
 
 type FormData = {
@@ -995,7 +997,7 @@ const ServiceTypeSection = ({ selectedServices, onServiceChange }: { selectedSer
 
 // Main Component with optimizations
 const TIPO_PREFIX: Record<string, string> = {
-  ups: 'UPS', aire: 'AIR', planta: 'PLT', fotovoltaico: 'FTV', impresora: 'IMP', otros: 'OTR',
+  ups: 'UPS', aire: 'AIR', planta: 'PLT', fotovoltaico: 'FTV', impresora: 'IMP', apantallamiento: 'APT', otros: 'OTR',
 }
 
 const fmtReportNum = (n: number, tipo = 'ups') => formatearNumeroInforme(n, tipo);
@@ -1008,6 +1010,9 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
   const [logoPosX, setLogoPosX] = useState(50);
   const [logoPosY, setLogoPosY] = useState(50);
   const [logoZoom, setLogoZoom] = useState(1);
+  const [marcas, setMarcas] = useState<MarcaRecord[]>([]);
+  const [marcaSeleccionada, setMarcaSeleccionada] = useState<MarcaRecord | null>(null);
+  const [marcaLogo, setMarcaLogo] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved'
@@ -1267,11 +1272,27 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
     })
   }, [empresaId]);
 
+  // Cargar marcas de la empresa
+  useEffect(() => {
+    if (!empresaId) return
+    listarMarcas(empresaId).then(setMarcas)
+  }, [empresaId])
+
   // Cargar el número de informe actual desde Supabase (solo lectura, sin incrementar)
   useEffect(() => {
     if (!empresaId || externalToken || !navigator.onLine) return
     obtenerNumeroActual(empresaId).then(n => setReportNumber(n)).catch(() => {})
   }, [empresaId, externalToken]);
+
+  const seleccionarMarca = async (marca: MarcaRecord | null) => {
+    setMarcaSeleccionada(marca)
+    if (marca?.logo_url) {
+      const compressed = await compressImage(marca.logo_url, 400, 200, 0.7)
+      setMarcaLogo(compressed)
+    } else {
+      setMarcaLogo(null)
+    }
+  }
 
   const electricalParameters = {
     inputVoltage: [
@@ -1474,8 +1495,8 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
       const reportInfo = `Reporte N° ${repNum} | ${currentDate}`;
       pdf.text(reportInfo, margin, footerY);
       
-      // Center: Company name
-      pdf.text(companyInfo.name, pageWidth / 2, footerY, { align: 'center' });
+      // Center: Company name (marca si está seleccionada)
+      pdf.text(marcaSeleccionada ? marcaSeleccionada.nombre : companyInfo.name, pageWidth / 2, footerY, { align: 'center' });
       
       // Right: Page number
       pdf.text(`Página ${pageNumber} de ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
@@ -1520,16 +1541,19 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
       aire:         'Aires Acondicionados',
       planta:       'Planta Eléctrica',
       fotovoltaico: 'Sistema Fotovoltaico',
-      impresora:    'Mantenimiento de Impresoras',
-      otros:        'Otros Servicios',
+      impresora:        'Mantenimiento de Impresoras',
+      apantallamiento:  'Sistema de Apantallamiento',
+      otros:            'Otros Servicios',
     }
     const tipoInforme = tipoLabel[formData.reportType as string] ?? 'UPS / Baterías'
 
-    // Logo (izquierda) — 40×20 mm (151×76 px para canvas)
+    // Logo (izquierda) — usa marca si está seleccionada, si no la empresa
+    const pdfLogo = marcaLogo ?? logo
+    const pdfName = marcaSeleccionada ? marcaSeleccionada.nombre : companyInfo.name
     const logoW = 40, logoH = 20
-    if (logo) {
+    if (pdfLogo) {
       try {
-        const croppedLogo = await renderLogoForPdf(logo, logoZoom, 256, 128)
+        const croppedLogo = await renderLogoForPdf(pdfLogo, logoZoom, 256, 128)
         pdf.addImage(croppedLogo, 'JPEG', margin, yPosition, logoW, logoH)
       } catch (_e) { console.warn('Could not add logo to PDF') }
     }
@@ -1565,25 +1589,30 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
     pdf.setFont('helvetica', 'bold');
     let nameFontSize = 10
     pdf.setFontSize(nameFontSize);
-    let nameLines = pdf.splitTextToSize(companyInfo.name, companyMaxW)
+    let nameLines = pdf.splitTextToSize(pdfName, companyMaxW)
     // Si no cabe en 2 líneas con 10pt, reducir a 8pt
     if (nameLines.length > 2) {
       nameFontSize = 8
       pdf.setFontSize(nameFontSize);
-      nameLines = pdf.splitTextToSize(companyInfo.name, companyMaxW)
+      nameLines = pdf.splitTextToSize(pdfName, companyMaxW)
     }
     const lineH = nameFontSize * 0.45
     nameLines.forEach((line: string, i: number) => {
       pdf.text(line, companyX, yPosition + 5 + (i * lineH), { align: 'right' })
     })
 
+    const pdfAddress = marcaSeleccionada?.direccion ?? companyInfo.address
+    const pdfPhone   = marcaSeleccionada?.telefono  ?? companyInfo.phone
+    const pdfEmail   = marcaSeleccionada?.email     ?? companyInfo.email
+    const pdfCity    = marcaSeleccionada?.ciudad    ?? companyInfo.city
+
     pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
     let ciY = yPosition + 5 + (nameLines.length * lineH) + 2
-    if (companyInfo.address) { pdf.text(companyInfo.address, companyX, ciY, { align: 'right' }); ciY += 4 }
-    if (companyInfo.phone)   { pdf.text(companyInfo.phone,   companyX, ciY, { align: 'right' }); ciY += 4 }
-    if (companyInfo.email)   { pdf.text(companyInfo.email,   companyX, ciY, { align: 'right' }); ciY += 4 }
-    if (companyInfo.city)    { pdf.text(companyInfo.city,    companyX, ciY, { align: 'right' }) }
+    if (pdfAddress) { pdf.text(pdfAddress, companyX, ciY, { align: 'right' }); ciY += 4 }
+    if (pdfPhone)   { pdf.text(pdfPhone,   companyX, ciY, { align: 'right' }); ciY += 4 }
+    if (pdfEmail)   { pdf.text(pdfEmail,   companyX, ciY, { align: 'right' }); ciY += 4 }
+    if (pdfCity)    { pdf.text(pdfCity,    companyX, ciY, { align: 'right' }) }
 
     // QR code — al lado derecho de los datos de empresa (16×16 mm)
     const qrX = pageWidth - margin - qrSize
@@ -1770,7 +1799,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
       yPosition += 4;
       addSectionDivider();
     }
-    if (formData.checkedItems && formData.checkedItems.length > 0) {
+    if ((!formData.reportType || formData.reportType === 'ups') && formData.checkedItems && formData.checkedItems.length > 0) {
       const allGroups = [
         { title: 'Inspección Visual', items: ['Limpieza general del equipo','Revisión de conexiones eléctricas','Revisión de ventilación y temperatura','Inspección de fusibles y breakers','Revisión de LEDs y alarmas activas'] },
         { title: 'Pruebas Eléctricas', items: ['Prueba de transferencia automática','Medición de voltaje entrada/salida','Verificación de frecuencia','Prueba de bypass manual','Verificación de alarmas del sistema'] },
@@ -1917,6 +1946,9 @@ yPosition += 8;
 
     // Add section divider
     addSectionDivider();
+
+    // ── Parámetros UPS (eléctricos + baterías + estado) ──────────
+    if (!formData.reportType || formData.reportType === 'ups') {
 
     // Electrical Parameters Section
     checkPageBreak(40);
@@ -2202,6 +2234,356 @@ yPosition += 8;
     // Add section divider
     addSectionDivider();
 
+    } // end UPS-only block
+
+    // ── Sección Aires Acondicionados ──────────────────────────
+    if (formData.reportType === 'aire') {
+      const acGroups = [
+        { title: 'Unidad Interior',       items: ['Limpieza de filtros de aire','Limpieza de serpentín evaporador','Revisión bandeja de condensados','Limpieza línea de drenaje','Revisión del ventilador interior','Revisión de conexiones eléctricas internas'] },
+        { title: 'Unidad Exterior',       items: ['Limpieza de serpentín condensador','Revisión del ventilador exterior','Revisión de conexiones eléctricas externas','Revisión de soportes y anclaje','Revisión de protecciones eléctricas'] },
+        { title: 'Sistema Refrigerante',  items: ['Medición de presiones de operación','Verificación de carga de refrigerante','Revisión de fugas en tuberías','Revisión de aislamiento de tuberías','Verificación de válvulas de servicio'] },
+        { title: 'Documentación',         items: ['Registro fotográfico completado','Parámetros operacionales registrados','Firma del cliente obtenida','Recomendaciones documentadas'] },
+      ]
+      const acChecked: string[] = (formData.checkedItems as string[]) ?? []
+      const acTotal = acGroups.reduce((s, g) => s + g.items.length, 0)
+      if (acChecked.length > 0 || acTotal > 0) {
+        addSectionDivider()
+        checkPageBreak(15)
+        pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+        pdf.text('LISTA DE ACTIVIDADES', margin, yPosition)
+        yPosition += 7
+        pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(80,80,80)
+        pdf.text(`${acChecked.length} de ${acTotal} actividades completadas (${Math.round(acChecked.length/acTotal*100)}%)`, margin, yPosition)
+        pdf.setTextColor(0,0,0); yPosition += 6
+        const acCols = 4; const acColW = contentWidth / acCols
+        acGroups.forEach(group => {
+          checkPageBreak(20)
+          pdf.setFillColor(235,235,235)
+          pdf.rect(margin, yPosition - 4, contentWidth, 6, 'F')
+          pdf.setFontSize(9); pdf.setFont('helvetica', 'bold')
+          pdf.text(group.title, margin + 2, yPosition)
+          yPosition += 7
+          group.items.forEach((item, idx) => {
+            const col = idx % acCols; const row = Math.floor(idx / acCols)
+            if (col === 0) checkPageBreak(6)
+            const isChecked = acChecked.includes(item)
+            const xPos = margin + col * acColW
+            const yPos = yPosition + row * 5
+            pdf.setFontSize(7.5); pdf.setFont('helvetica', 'normal')
+            pdf.setTextColor(isChecked ? 22 : 160, isChecked ? 158 : 160, isChecked ? 117 : 160)
+            pdf.text(isChecked ? '[OK]' : '[ ]', xPos, yPos)
+            pdf.setTextColor(isChecked ? 100 : 40, isChecked ? 100 : 40, isChecked ? 100 : 40)
+            const t = pdf.splitTextToSize(item, acColW - 14)[0]
+            pdf.text(t, xPos + 11, yPos)
+          })
+          yPosition += Math.ceil(group.items.length / acCols) * 5 + 4
+          pdf.setTextColor(0,0,0)
+        })
+      }
+      // Parámetros AC
+      const acFields: [string, string][] = [
+        ['Tipo de unidad:', String(formData.acType || 'N/A')],
+        ['Capacidad:', formData.acCapacityBTU ? `${formData.acCapacityBTU} BTU/h` : 'N/A'],
+        ['Refrigerante:', String(formData.acRefrigerant || 'N/A')],
+        ['Pres. Succión:', formData.acPressureSuction ? `${formData.acPressureSuction} psi` : 'N/A'],
+        ['Pres. Descarga:', formData.acPressureDischarge ? `${formData.acPressureDischarge} psi` : 'N/A'],
+        ['Temp. Succión:', formData.acTempSuction ? `${formData.acTempSuction} °C` : 'N/A'],
+        ['Temp. Descarga:', formData.acTempDischarge ? `${formData.acTempDischarge} °C` : 'N/A'],
+        ['Temp. Suministro:', formData.acTempSupply ? `${formData.acTempSupply} °C` : 'N/A'],
+        ['Temp. Retorno:', formData.acTempReturn ? `${formData.acTempReturn} °C` : 'N/A'],
+        ['Temp. Ambiente:', formData.acTempAmbient ? `${formData.acTempAmbient} °C` : 'N/A'],
+        ['Carga Refrig.:', formData.acRefrigerantCharge ? `${formData.acRefrigerantCharge} lbs` : 'N/A'],
+        ['V. Compresor:', formData.acVoltageComp ? `${formData.acVoltageComp} V` : 'N/A'],
+        ['A. Compresor:', formData.acCurrentComp ? `${formData.acCurrentComp} A` : 'N/A'],
+        ['Potencia Comp.:', formData.acPowerComp ? `${formData.acPowerComp} W` : 'N/A'],
+        ['Frecuencia:', formData.acFrequency ? `${formData.acFrequency} Hz` : 'N/A'],
+        ['V. Ventil. Int.:', formData.acVoltFanInt ? `${formData.acVoltFanInt} V` : 'N/A'],
+        ['A. Ventil. Int.:', formData.acAmpFanInt ? `${formData.acAmpFanInt} A` : 'N/A'],
+        ['V. Ventil. Ext.:', formData.acVoltFanExt ? `${formData.acVoltFanExt} V` : 'N/A'],
+        ['A. Ventil. Ext.:', formData.acAmpFanExt ? `${formData.acAmpFanExt} A` : 'N/A'],
+      ]
+      addSectionDivider()
+      checkPageBreak(15)
+      pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+      pdf.text('PARÁMETROS DEL SISTEMA AC', margin, yPosition)
+      yPosition += 8
+      const acPC = 4; const acPW = contentWidth / acPC
+      acFields.forEach(([label, value], idx) => {
+        const col = idx % acPC; const row = Math.floor(idx / acPC)
+        if (col === 0) checkPageBreak(6)
+        const xPos = margin + col * acPW
+        const yPos = yPosition + row * 7
+        pdf.setFontSize(7); pdf.setFont('helvetica', 'bold')
+        pdf.text(label, xPos, yPos)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(pdf.splitTextToSize(value, acPW - 2)[0], xPos, yPos + 4)
+      })
+      yPosition += Math.ceil(acFields.length / acPC) * 7 + 4
+      // Estado AC
+      const acStatus: [string, string][] = [
+        ['Compresor:', String(formData.acStatusCompressor || 'N/A')],
+        ['Evaporador:', String(formData.acStatusEvaporator || 'N/A')],
+        ['Condensador:', String(formData.acStatusCondenser || 'N/A')],
+        ['V. Expansión:', String(formData.acStatusExpansion || 'N/A')],
+        ['Sistema Drenaje:', String(formData.acStatusDrain || 'N/A')],
+        ['Sist. Eléctrico:', String(formData.acStatusElectrical || 'N/A')],
+      ]
+      addSectionDivider()
+      checkPageBreak(15)
+      pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+      pdf.text('ESTADO DEL EQUIPO', margin, yPosition)
+      yPosition += 8
+      const acSC = 3; const acSW = contentWidth / acSC
+      acStatus.forEach(([label, value], idx) => {
+        const col = idx % acSC; const row = Math.floor(idx / acSC)
+        if (col === 0) checkPageBreak(6)
+        const xPos = margin + col * acSW
+        const yPos = yPosition + row * 7
+        pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+        pdf.text(label, xPos, yPos)
+        pdf.setFont('helvetica', 'normal')
+        const cap = (value.charAt(0).toUpperCase() + value.slice(1))
+        pdf.text(cap, xPos, yPos + 4)
+      })
+      yPosition += Math.ceil(acStatus.length / acSC) * 7 + 4
+      addSectionDivider()
+    }
+
+    // ── Sección Plantas Eléctricas ─────────────────────────────
+    if (formData.reportType === 'planta') {
+      const genGroups = [
+        { title: 'Motor y Combustible', items: ['Revisión nivel de combustible','Revisión nivel de aceite motor','Revisión nivel de refrigerante','Inspección de fugas de combustible','Inspección de fugas de aceite','Revisión del sistema de escape'] },
+        { title: 'Sistema Eléctrico',   items: ['Revisión batería de arranque','Medición voltaje de batería','Revisión de conexiones eléctricas','Revisión del alternador','Prueba de transferencia automática (ATS)','Verificación de protecciones eléctricas'] },
+        { title: 'Prueba de Carga',     items: ['Arranque sin carga','Prueba con carga al 25%','Prueba con carga al 50%','Prueba con carga al 75%','Verificación de frecuencia y voltaje','Registro de parámetros en operación'] },
+        { title: 'Documentación',       items: ['Registro fotográfico completado','Parámetros operacionales registrados','Firma del cliente obtenida','Recomendaciones documentadas'] },
+      ]
+      const genChecked: string[] = (formData.checkedItems as string[]) ?? []
+      const genTotal = genGroups.reduce((s, g) => s + g.items.length, 0)
+      if (genChecked.length > 0 || genTotal > 0) {
+        addSectionDivider()
+        checkPageBreak(15)
+        pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+        pdf.text('LISTA DE ACTIVIDADES', margin, yPosition)
+        yPosition += 7
+        pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(80,80,80)
+        pdf.text(`${genChecked.length} de ${genTotal} actividades completadas (${Math.round(genChecked.length/genTotal*100)}%)`, margin, yPosition)
+        pdf.setTextColor(0,0,0); yPosition += 6
+        const gCols = 4; const gColW = contentWidth / gCols
+        genGroups.forEach(group => {
+          checkPageBreak(20)
+          pdf.setFillColor(235,235,235)
+          pdf.rect(margin, yPosition - 4, contentWidth, 6, 'F')
+          pdf.setFontSize(9); pdf.setFont('helvetica', 'bold')
+          pdf.text(group.title, margin + 2, yPosition)
+          yPosition += 7
+          group.items.forEach((item, idx) => {
+            const col = idx % gCols; const row = Math.floor(idx / gCols)
+            if (col === 0) checkPageBreak(6)
+            const isChecked = genChecked.includes(item)
+            const xPos = margin + col * gColW
+            const yPos = yPosition + row * 5
+            pdf.setFontSize(7.5); pdf.setFont('helvetica', 'normal')
+            pdf.setTextColor(isChecked ? 22 : 160, isChecked ? 158 : 160, isChecked ? 117 : 160)
+            pdf.text(isChecked ? '[OK]' : '[ ]', xPos, yPos)
+            pdf.setTextColor(isChecked ? 100 : 40, isChecked ? 100 : 40, isChecked ? 100 : 40)
+            const t = pdf.splitTextToSize(item, gColW - 14)[0]
+            pdf.text(t, xPos + 11, yPos)
+          })
+          yPosition += Math.ceil(group.items.length / gCols) * 5 + 4
+          pdf.setTextColor(0,0,0)
+        })
+      }
+      // Parámetros planta
+      const genFields: [string, string][] = [
+        ['Tipo combustible:', String(formData.genFuelType || 'N/A')],
+        ['Potencia:', formData.genPowerKVA ? `${formData.genPowerKVA} kVA` : 'N/A'],
+        ['Horas operación:', formData.genHours ? `${formData.genHours} h` : 'N/A'],
+        ['Combustible:', formData.genFuelLevel ? `${formData.genFuelLevel}%` : 'N/A'],
+        ['Aceite:', formData.genOilLevel ? `${formData.genOilLevel} mm` : 'N/A'],
+        ['Refrigerante:', formData.genCoolantLevel ? `${formData.genCoolantLevel}%` : 'N/A'],
+        ['Pres. Aceite:', formData.genOilPressure ? `${formData.genOilPressure} psi` : 'N/A'],
+        ['Temp. Motor:', formData.genEngineTemp ? `${formData.genEngineTemp} °C` : 'N/A'],
+        ['RPM:', formData.genRPM ? String(formData.genRPM) : 'N/A'],
+        ['Frecuencia:', formData.genFrequency ? `${formData.genFrequency} Hz` : 'N/A'],
+        ['Tiempo prueba:', formData.genRunTime ? `${formData.genRunTime} min` : 'N/A'],
+        ['V. Salida L1:', formData.genVoltL1 ? `${formData.genVoltL1} V` : 'N/A'],
+        ['V. Salida L2:', formData.genVoltL2 ? `${formData.genVoltL2} V` : 'N/A'],
+        ['V. Salida L3:', formData.genVoltL3 ? `${formData.genVoltL3} V` : 'N/A'],
+        ['V. Salida FF:', formData.genVoltFF ? `${formData.genVoltFF} V` : 'N/A'],
+        ['A. Salida L1:', formData.genAmpL1 ? `${formData.genAmpL1} A` : 'N/A'],
+        ['A. Salida L2:', formData.genAmpL2 ? `${formData.genAmpL2} A` : 'N/A'],
+        ['A. Salida L3:', formData.genAmpL3 ? `${formData.genAmpL3} A` : 'N/A'],
+        ['Bat. Arranque:', formData.genBattVolt ? `${formData.genBattVolt} V` : 'N/A'],
+      ]
+      addSectionDivider()
+      checkPageBreak(15)
+      pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+      pdf.text('PARÁMETROS DE LA PLANTA ELÉCTRICA', margin, yPosition)
+      yPosition += 8
+      const gPC = 4; const gPW = contentWidth / gPC
+      genFields.forEach(([label, value], idx) => {
+        const col = idx % gPC; const row = Math.floor(idx / gPC)
+        if (col === 0) checkPageBreak(6)
+        const xPos = margin + col * gPW
+        const yPos = yPosition + row * 7
+        pdf.setFontSize(7); pdf.setFont('helvetica', 'bold')
+        pdf.text(label, xPos, yPos)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(pdf.splitTextToSize(value, gPW - 2)[0], xPos, yPos + 4)
+      })
+      yPosition += Math.ceil(genFields.length / gPC) * 7 + 4
+      // Estado planta
+      const genStatus: [string, string][] = [
+        ['Motor:', String(formData.genStatusEngine || 'N/A')],
+        ['Alternador:', String(formData.genStatusAlternator || 'N/A')],
+        ['Bat. Arranque:', String(formData.genStatusStartBatt || 'N/A')],
+        ['Transferencia (ATS):', String(formData.genStatusATS || 'N/A')],
+        ['Sist. Combustible:', String(formData.genStatusFuelSystem || 'N/A')],
+        ['Sist. Enfriamiento:', String(formData.genStatusCooling || 'N/A')],
+      ]
+      addSectionDivider()
+      checkPageBreak(15)
+      pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+      pdf.text('ESTADO DEL EQUIPO', margin, yPosition)
+      yPosition += 8
+      const gSC = 3; const gSW = contentWidth / gSC
+      genStatus.forEach(([label, value], idx) => {
+        const col = idx % gSC; const row = Math.floor(idx / gSC)
+        if (col === 0) checkPageBreak(6)
+        const xPos = margin + col * gSW
+        const yPos = yPosition + row * 7
+        pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+        pdf.text(label, xPos, yPos)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(value.charAt(0).toUpperCase() + value.slice(1), xPos, yPos + 4)
+      })
+      yPosition += Math.ceil(genStatus.length / gSC) * 7 + 4
+      addSectionDivider()
+    }
+
+    // ── Sección Sistema Fotovoltaico ──────────────────────────
+    if (formData.reportType === 'fotovoltaico') {
+      const pvGroups = [
+        { title: 'Paneles Solares',       items: ['Limpieza de módulos fotovoltaicos','Inspección visual de daños / microfisuras','Revisión de sombras sobre paneles','Verificación de conexiones en caja de combinación','Revisión de estructura y anclajes','Medición de Voc e Isc por string'] },
+        { title: 'Inversor y Protecciones', items: ['Revisión del inversor (errores / alarmas)','Verificación de parámetros de operación','Revisión de protecciones DC (fusibles / DPS)','Revisión de protecciones AC (interruptores)','Verificación de puesta a tierra','Revisión de ventilación del inversor'] },
+        { title: 'Baterías (si aplica)', items: ['Medición de voltaje de banco','Verificación de estado de carga (SOC)','Revisión de bornes y conexiones','Verificación de temperatura de baterías','Revisión del controlador de carga'] },
+        { title: 'Documentación',         items: ['Registro fotográfico completado','Parámetros de generación registrados','Firma del cliente obtenida','Recomendaciones documentadas'] },
+      ]
+      const pvChecked: string[] = (formData.checkedItems as string[]) ?? []
+      const pvTotal = pvGroups.reduce((s, g) => s + g.items.length, 0)
+      if (pvChecked.length > 0 || pvTotal > 0) {
+        addSectionDivider()
+        checkPageBreak(15)
+        pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+        pdf.text('LISTA DE ACTIVIDADES', margin, yPosition)
+        yPosition += 7
+        pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(80,80,80)
+        pdf.text(`${pvChecked.length} de ${pvTotal} actividades completadas (${Math.round(pvChecked.length/pvTotal*100)}%)`, margin, yPosition)
+        pdf.setTextColor(0,0,0); yPosition += 6
+        const pvCols = 4; const pvColW = contentWidth / pvCols
+        pvGroups.forEach(group => {
+          checkPageBreak(20)
+          pdf.setFillColor(235,235,235)
+          pdf.rect(margin, yPosition - 4, contentWidth, 6, 'F')
+          pdf.setFontSize(9); pdf.setFont('helvetica', 'bold')
+          pdf.text(group.title, margin + 2, yPosition)
+          yPosition += 7
+          group.items.forEach((item, idx) => {
+            const col = idx % pvCols; const row = Math.floor(idx / pvCols)
+            if (col === 0) checkPageBreak(6)
+            const isChecked = pvChecked.includes(item)
+            const xPos = margin + col * pvColW
+            const yPos = yPosition + row * 5
+            pdf.setFontSize(7.5); pdf.setFont('helvetica', 'normal')
+            pdf.setTextColor(isChecked ? 22 : 160, isChecked ? 158 : 160, isChecked ? 117 : 160)
+            pdf.text(isChecked ? '[OK]' : '[ ]', xPos, yPos)
+            pdf.setTextColor(isChecked ? 100 : 40, isChecked ? 100 : 40, isChecked ? 100 : 40)
+            const t = pdf.splitTextToSize(item, pvColW - 14)[0]
+            pdf.text(t, xPos + 11, yPos)
+          })
+          yPosition += Math.ceil(group.items.length / pvCols) * 5 + 4
+          pdf.setTextColor(0,0,0)
+        })
+      }
+      // Especificaciones + DC + AC + Baterías FV
+      const pvFields: [string, string][] = [
+        ['Tipo de sistema:', String(formData.pvSystemType || 'N/A')],
+        ['Potencia pico:', formData.pvPeakPower ? `${formData.pvPeakPower} kWp` : 'N/A'],
+        ['N° de paneles:', formData.pvPanelCount ? String(formData.pvPanelCount) : 'N/A'],
+        ['Panel (modelo):', String(formData.pvPanelModel || 'N/A')],
+        ['Tipo inversor:', String(formData.pvInverterType || 'N/A')],
+        ['Inversor (modelo):', String(formData.pvInverterModel || 'N/A')],
+        ['Voc:', formData.pvVoc ? `${formData.pvVoc} V` : 'N/A'],
+        ['Isc:', formData.pvIsc ? `${formData.pvIsc} A` : 'N/A'],
+        ['Vmp:', formData.pvVmp ? `${formData.pvVmp} V` : 'N/A'],
+        ['Imp:', formData.pvImp ? `${formData.pvImp} A` : 'N/A'],
+        ['Potencia DC:', formData.pvDcPower ? `${formData.pvDcPower} W` : 'N/A'],
+        ['Irradiancia:', formData.pvIrradiance ? `${formData.pvIrradiance} W/m²` : 'N/A'],
+        ['Temp. Panel:', formData.pvPanelTemp ? `${formData.pvPanelTemp} °C` : 'N/A'],
+        ['Temp. Ambiente:', formData.pvAmbientTemp ? `${formData.pvAmbientTemp} °C` : 'N/A'],
+        ['V. AC L1:', formData.pvAcVoltL1 ? `${formData.pvAcVoltL1} V` : 'N/A'],
+        ['V. AC L2:', formData.pvAcVoltL2 ? `${formData.pvAcVoltL2} V` : 'N/A'],
+        ['V. AC L3:', formData.pvAcVoltL3 ? `${formData.pvAcVoltL3} V` : 'N/A'],
+        ['Frecuencia:', formData.pvFrequency ? `${formData.pvFrequency} Hz` : 'N/A'],
+        ['A. AC L1:', formData.pvAcCurrentL1 ? `${formData.pvAcCurrentL1} A` : 'N/A'],
+        ['A. AC L2:', formData.pvAcCurrentL2 ? `${formData.pvAcCurrentL2} A` : 'N/A'],
+        ['A. AC L3:', formData.pvAcCurrentL3 ? `${formData.pvAcCurrentL3} A` : 'N/A'],
+        ['Potencia AC:', formData.pvAcPower ? `${formData.pvAcPower} kW` : 'N/A'],
+        ['Eficiencia:', formData.pvEfficiency ? `${formData.pvEfficiency}%` : 'N/A'],
+        ['Energía del día:', formData.pvEnergyDay ? `${formData.pvEnergyDay} kWh` : 'N/A'],
+        ['Energía total:', formData.pvEnergyTotal ? `${formData.pvEnergyTotal} kWh` : 'N/A'],
+        ['CO₂ evitado:', formData.pvCO2Saved ? `${formData.pvCO2Saved} kg` : 'N/A'],
+        ['Bat. Voltaje:', formData.pvBattVoltage ? `${formData.pvBattVoltage} V` : 'N/A'],
+        ['Bat. SOC:', formData.pvBattSOC ? `${formData.pvBattSOC}%` : 'N/A'],
+        ['Bat. Corriente:', formData.pvBattCurrent ? `${formData.pvBattCurrent} A` : 'N/A'],
+        ['Bat. Temp.:', formData.pvBattTemp ? `${formData.pvBattTemp} °C` : 'N/A'],
+      ]
+      addSectionDivider()
+      checkPageBreak(15)
+      pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+      pdf.text('PARÁMETROS DEL SISTEMA FOTOVOLTAICO', margin, yPosition)
+      yPosition += 8
+      const pvPC = 4; const pvPW = contentWidth / pvPC
+      pvFields.forEach(([label, value], idx) => {
+        const col = idx % pvPC; const row = Math.floor(idx / pvPC)
+        if (col === 0) checkPageBreak(6)
+        const xPos = margin + col * pvPW
+        const yPos = yPosition + row * 7
+        pdf.setFontSize(7); pdf.setFont('helvetica', 'bold')
+        pdf.text(label, xPos, yPos)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(pdf.splitTextToSize(value, pvPW - 2)[0], xPos, yPos + 4)
+      })
+      yPosition += Math.ceil(pvFields.length / pvPC) * 7 + 4
+      // Estado FV
+      const pvStatus: [string, string][] = [
+        ['Módulos FV:', String(formData.pvStatusPanels || 'N/A')],
+        ['Inversor:', String(formData.pvStatusInverter || 'N/A')],
+        ['Estructura:', String(formData.pvStatusStructure || 'N/A')],
+        ['Protec. DC:', String(formData.pvStatusProtDC || 'N/A')],
+        ['Protec. AC:', String(formData.pvStatusProtAC || 'N/A')],
+        ['Baterías:', String(formData.pvStatusBattery || 'N/A')],
+      ]
+      addSectionDivider()
+      checkPageBreak(15)
+      pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+      pdf.text('ESTADO DEL SISTEMA', margin, yPosition)
+      yPosition += 8
+      const pvSC = 3; const pvSW = contentWidth / pvSC
+      pvStatus.forEach(([label, value], idx) => {
+        const col = idx % pvSC; const row = Math.floor(idx / pvSC)
+        if (col === 0) checkPageBreak(6)
+        const xPos = margin + col * pvSW
+        const yPos = yPosition + row * 7
+        pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+        pdf.text(label, xPos, yPos)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(value.charAt(0).toUpperCase() + value.slice(1), xPos, yPos + 4)
+      })
+      yPosition += Math.ceil(pvStatus.length / pvSC) * 7 + 4
+      addSectionDivider()
+    }
+
     // ── Sección Impresora ──────────────────────────────────────
     if (formData.reportType === 'impresora') {
       // Checklist de actividades
@@ -2263,6 +2645,170 @@ yPosition += 8;
         pdf.text(val[0], xPos, yPos + 4)
       })
       yPosition += Math.ceil(imprFields.length / cols3) * 7 + 4
+      addSectionDivider()
+    }
+
+    // ── Sección Apantallamiento ────────────────────────────────
+    if (formData.reportType === 'apantallamiento') {
+      // Checklist
+      const apanChecks: { id: number; text: string; checked: boolean }[] = (formData.apanChecklist as { id: number; text: string; checked: boolean }[]) ?? []
+      if (apanChecks.length > 0) {
+        addSectionDivider()
+        checkPageBreak(15)
+        pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+        pdf.text('LISTA DE ACTIVIDADES', margin, yPosition)
+        yPosition += 8
+        const doneAP = apanChecks.filter(c => c.checked).length
+        pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(80,80,80)
+        pdf.text(`${doneAP} de ${apanChecks.length} actividades completadas (${Math.round(doneAP/apanChecks.length*100)}%)`, margin, yPosition)
+        pdf.setTextColor(0,0,0); yPosition += 6
+        const apCols = 2; const apColW = contentWidth / apCols
+        apanChecks.forEach((c, idx) => {
+          const col = idx % apCols; const row = Math.floor(idx / apCols)
+          if (col === 0) checkPageBreak(6)
+          const xPos = margin + col * apColW
+          const yPos = yPosition + row * 5.5
+          pdf.setFontSize(8); pdf.setFont('helvetica', 'normal')
+          pdf.text(c.checked ? '[OK]' : '[ ]', xPos, yPos)
+          const fitted = pdf.splitTextToSize(c.text, apColW - 12)
+          pdf.text(fitted[0], xPos + 10, yPos)
+        })
+        yPosition += Math.ceil(apanChecks.length / apCols) * 5.5 + 4
+      }
+
+      // Datos + Medición + Resultado
+      const apanFields: [string, string][] = [
+        ['Tipo de sistema:', String(formData.apanTipo || 'N/A')],
+        ['Nivel de proteccion:', String(formData.apanNivel || 'N/A')],
+        ['Altura punta captadora (m):', formData.apanAltura ? String(formData.apanAltura) : 'N/A'],
+        ['Ano de instalacion:', formData.apanAnoInstalacion ? String(formData.apanAnoInstalacion) : 'N/A'],
+        ['Resistencia de tierra (Ohm):', formData.apanResistencia ? String(formData.apanResistencia) : 'N/A'],
+        ['Valor maximo permitido:', String(formData.apanResistenciaMax || 'N/A')],
+        ['Metodo de medicion:', String(formData.apanMetodo || 'N/A')],
+        ['Instrumento:', String(formData.apanInstrumento || 'N/A')],
+        ['Temperatura (°C):', formData.apanTemperatura ? String(formData.apanTemperatura) : 'N/A'],
+        ['Humedad relativa (%):', formData.apanHumedad ? String(formData.apanHumedad) : 'N/A'],
+        ['Estado conductor bajada:', String(formData.apanBajante || 'N/A')],
+        ['Estado punta captadora:', String(formData.apanPunta || 'N/A')],
+        ['Estado uniones/conectores:', String(formData.apanUniones || 'N/A')],
+        ['Resultado general:', String(formData.apanResultado || 'N/A')],
+        ['Normativa aplicada:', String(formData.apanNorma || 'N/A')],
+      ]
+      addSectionDivider()
+      checkPageBreak(15)
+      pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+      pdf.text('SISTEMA DE APANTALLAMIENTO', margin, yPosition)
+      yPosition += 8
+      const apFCols = 3; const apFColW = contentWidth / apFCols
+      apanFields.forEach(([label, value], idx) => {
+        const col = idx % apFCols; const row = Math.floor(idx / apFCols)
+        if (col === 0) checkPageBreak(6)
+        const xPos = margin + col * apFColW
+        const yPos = yPosition + row * 7
+        pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+        pdf.text(label, xPos, yPos)
+        pdf.setFont('helvetica', 'normal')
+        const val = pdf.splitTextToSize(value, apFColW - 2)
+        pdf.text(val[0], xPos, yPos + 4)
+      })
+      yPosition += Math.ceil(apanFields.length / apFCols) * 7 + 4
+      addSectionDivider()
+    }
+
+    // ── Sección Otros Servicios ────────────────────────────────
+    if (formData.reportType === 'otros') {
+      const categoriaLabel: Record<string, string> = {
+        tablero:     'Tablero Eléctrico',
+        redes:       'Redes / Cableado Estructurado',
+        computo:     'Mantenimiento de Cómputo',
+        instalacion: 'Instalación Eléctrica',
+        otro:        'Otro servicio',
+      }
+      const catNombre = categoriaLabel[formData.otrosCategoria as string] ?? 'Otros Servicios'
+
+      addSectionDivider()
+      checkPageBreak(10)
+      pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+      pdf.text(`SERVICIO: ${catNombre.toUpperCase()}`, margin, yPosition)
+      yPosition += 6
+
+      if (formData.otrosDescripcion) {
+        pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(80,80,80)
+        pdf.text(String(formData.otrosDescripcion), margin, yPosition)
+        pdf.setTextColor(0,0,0); yPosition += 6
+      }
+
+      // Checklist
+      const otrosChecks: { id: number; text: string; checked: boolean }[] = (formData.otrosChecklist as { id: number; text: string; checked: boolean }[]) ?? []
+      if (otrosChecks.length > 0) {
+        addSectionDivider()
+        checkPageBreak(15)
+        pdf.setFontSize(11); pdf.setFont('helvetica', 'bold')
+        pdf.text('LISTA DE ACTIVIDADES', margin, yPosition)
+        yPosition += 7
+        const doneOT = otrosChecks.filter(c => c.checked).length
+        pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(80,80,80)
+        pdf.text(`${doneOT} de ${otrosChecks.length} actividades completadas (${Math.round(doneOT/otrosChecks.length*100)}%)`, margin, yPosition)
+        pdf.setTextColor(0,0,0); yPosition += 6
+        const otCols = 2; const otColW = contentWidth / otCols
+        otrosChecks.forEach((c, idx) => {
+          const col = idx % otCols; const row = Math.floor(idx / otCols)
+          if (col === 0) checkPageBreak(6)
+          const xPos = margin + col * otColW
+          const yPos = yPosition + row * 5.5
+          pdf.setFontSize(8); pdf.setFont('helvetica', 'normal')
+          pdf.text(c.checked ? '[OK]' : '[ ]', xPos, yPos)
+          const fitted = pdf.splitTextToSize(c.text, otColW - 12)
+          pdf.text(fitted[0], xPos + 10, yPos)
+        })
+        yPosition += Math.ceil(otrosChecks.length / otCols) * 5.5 + 4
+      }
+
+      // Parámetros medidos
+      const otrosParams: { id: number; label: string; value: string; unit: string }[] = (formData.otrosParams as { id: number; label: string; value: string; unit: string }[]) ?? []
+      if (otrosParams.length > 0) {
+        addSectionDivider()
+        checkPageBreak(15)
+        pdf.setFontSize(11); pdf.setFont('helvetica', 'bold')
+        pdf.text('PARÁMETROS MEDIDOS', margin, yPosition)
+        yPosition += 7
+        const pCols = 3; const pColW = contentWidth / pCols
+        otrosParams.forEach(({ label, value, unit }, idx) => {
+          const col = idx % pCols; const row = Math.floor(idx / pCols)
+          if (col === 0) checkPageBreak(6)
+          const xPos = margin + col * pColW
+          const yPos = yPosition + row * 7
+          pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+          const lbl = pdf.splitTextToSize(label || 'Parámetro', pColW - 2)
+          pdf.text(lbl[0], xPos, yPos)
+          pdf.setFont('helvetica', 'normal')
+          pdf.text(`${value || '—'} ${unit || ''}`.trim(), xPos, yPos + 4)
+        })
+        yPosition += Math.ceil(otrosParams.length / pCols) * 7 + 4
+      }
+
+      // Resultado
+      if (formData.otrosEstado || formData.otrosResultado) {
+        addSectionDivider()
+        checkPageBreak(15)
+        pdf.setFontSize(11); pdf.setFont('helvetica', 'bold')
+        pdf.text('RESULTADO DE LA INSPECCIÓN', margin, yPosition)
+        yPosition += 7
+        const resFields: [string, string][] = [
+          ['Estado general:', String(formData.otrosEstado || 'N/A')],
+          ['Resultado:', String(formData.otrosResultado || 'N/A')],
+        ]
+        resFields.forEach(([label, value], idx) => {
+          const col = idx % 2; const xPos = margin + col * (contentWidth / 2)
+          pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+          pdf.text(label, xPos, yPosition)
+          pdf.setFont('helvetica', 'normal')
+          const val = pdf.splitTextToSize(value, contentWidth / 2 - 2)
+          pdf.text(val[0], xPos, yPosition + 4)
+        })
+        yPosition += 12
+      }
+
       addSectionDivider()
     }
 
@@ -2742,11 +3288,16 @@ yPosition += 8;
 
             {/* Company info */}
             <div className="text-center sm:text-right order-3">
-              <h2 className="font-bold text-xl sm:text-2xl">{companyInfo.name}</h2>
-              {companyInfo.address && <p className="text-sm text-gray-600">{companyInfo.address}</p>}
-              {companyInfo.phone   && <p className="text-sm text-gray-600">{companyInfo.phone}</p>}
-              {companyInfo.email   && <p className="text-sm text-gray-600">{companyInfo.email}</p>}
-              {companyInfo.city    && <p className="text-sm text-gray-600">{companyInfo.city}</p>}
+              <h2 className="font-bold text-xl sm:text-2xl">
+                {marcaSeleccionada ? marcaSeleccionada.nombre : companyInfo.name}
+              </h2>
+              {marcaSeleccionada && (
+                <p className="text-xs text-green-600 font-medium">Servicio prestado por {companyInfo.name}</p>
+              )}
+              {(marcaSeleccionada?.direccion ?? companyInfo.address) && <p className="text-sm text-gray-600">{marcaSeleccionada?.direccion ?? companyInfo.address}</p>}
+              {(marcaSeleccionada?.telefono  ?? companyInfo.phone)   && <p className="text-sm text-gray-600">{marcaSeleccionada?.telefono ?? companyInfo.phone}</p>}
+              {(marcaSeleccionada?.email     ?? companyInfo.email)   && <p className="text-sm text-gray-600">{marcaSeleccionada?.email ?? companyInfo.email}</p>}
+              {(marcaSeleccionada?.ciudad    ?? companyInfo.city)    && <p className="text-sm text-gray-600">{marcaSeleccionada?.ciudad ?? companyInfo.city}</p>}
               <div className="flex items-center justify-center sm:justify-end mt-2">
                 <span className="text-sm font-medium text-green-700">👤 {technician}</span>
               </div>
@@ -2778,6 +3329,40 @@ yPosition += 8;
                 );
               })}
             </div>
+
+            {/* Selector de marca / empresa representada */}
+            {marcas.length > 0 && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                <p className="text-xs font-medium text-blue-700 mb-2">¿Emitir informe a nombre de otra empresa?</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => seleccionarMarca(null)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                      !marcaSeleccionada
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'border-blue-200 text-blue-600 hover:bg-blue-100'
+                    }`}
+                  >
+                    Mi empresa
+                  </button>
+                  {marcas.map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => seleccionarMarca(m)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                        marcaSeleccionada?.id === m.id
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'border-blue-200 text-blue-600 hover:bg-blue-100'
+                      }`}
+                    >
+                      {m.nombre}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Client Information */}
             <CollapsibleSection title="Información del Cliente" icon={User} initiallyOpen={true}>
@@ -2873,8 +3458,9 @@ yPosition += 8;
             {formData.reportType === 'aire'         && <AireParams         showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
             {formData.reportType === 'planta'       && <PlantaParams       showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
             {formData.reportType === 'fotovoltaico' && <FotovoltaicoParams showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'impresora'    && <ImpresoraParams    showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'otros'        && <OtrosParams        showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'impresora'        && <ImpresoraParams        showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'apantallamiento' && <ApantallamientoParams  showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'otros'           && <OtrosParams            showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
 
             {/* Información del Servicio */}
             <ServiceInfoSection
@@ -3096,8 +3682,9 @@ yPosition += 8;
             {formData.reportType === 'aire'         && <AireParams         showOnly="params" formData={formData} onChange={handleFieldChange} />}
             {formData.reportType === 'planta'       && <PlantaParams       showOnly="params" formData={formData} onChange={handleFieldChange} />}
             {formData.reportType === 'fotovoltaico' && <FotovoltaicoParams showOnly="params" formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'impresora'    && <ImpresoraParams    showOnly="params" formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'otros'        && <OtrosParams        showOnly="params" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'impresora'        && <ImpresoraParams        showOnly="params" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'apantallamiento' && <ApantallamientoParams  showOnly="params" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'otros'           && <OtrosParams            showOnly="params" formData={formData} onChange={handleFieldChange} />}
 
             {/* Parámetros Eléctricos — solo UPS */}
             {(!formData.reportType || formData.reportType === 'ups') && (

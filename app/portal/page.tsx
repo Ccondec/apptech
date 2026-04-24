@@ -26,6 +26,7 @@ const TIPO_LABELS: Record<string, string> = {
   planta: 'Plantas Eléctricas',
   fotovoltaico: 'Sistema Fotovoltaico',
   impresora: 'Impresoras',
+  apantallamiento: 'Sistema de Apantallamiento',
   otros: 'Otros Servicios',
 }
 
@@ -262,7 +263,8 @@ export default function PortalPage() {
                    inf.tipo_reporte === 'aire' ? '❄️' :
                    inf.tipo_reporte === 'planta' ? '⚡' :
                    inf.tipo_reporte === 'fotovoltaico' ? '☀️' :
-                   inf.tipo_reporte === 'impresora' ? '🖨️' : '📋'}
+                   inf.tipo_reporte === 'impresora' ? '🖨️' :
+                   inf.tipo_reporte === 'apantallamiento' ? '⛈️' : '📋'}
                 </div>
 
                 {/* Info */}
