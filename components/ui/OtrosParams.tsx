@@ -9,12 +9,13 @@ interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   formData: Record<string, any>
   onChange: (field: string, value: unknown) => void
+  showOnly?: 'checklist' | 'params'
 }
 
 interface ParamRow { id: number; label: string; value: string; unit: string }
 interface CheckRow { id: number; text: string; checked: boolean }
 
-export default function OtrosParams({ formData, onChange }: Props) {
+export default function OtrosParams({ formData, onChange, showOnly }: Props) {
   const params: ParamRow[]  = formData.otrosParams   || []
   const checks: CheckRow[]  = formData.otrosChecklist || []
 
@@ -44,7 +45,8 @@ export default function OtrosParams({ formData, onChange }: Props) {
 
   return (
     <>
-      {/* Título del informe */}
+      {/* Título del informe + Parámetros libres */}
+      {showOnly !== 'checklist' && <>
       <CollapsibleSection title="Información del Informe" icon={ClipboardList} initiallyOpen>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1">
@@ -107,9 +109,10 @@ export default function OtrosParams({ formData, onChange }: Props) {
           </Button>
         </div>
       </CollapsibleSection>
+      </>}
 
       {/* Checklist libre */}
-      <CollapsibleSection title="Lista de Actividades" icon={ClipboardList}>
+      {showOnly !== 'params' && <CollapsibleSection title="Lista de Actividades" icon={ClipboardList}>
         <div className="space-y-3">
           {total > 0 && (
             <div className="space-y-1 mb-2">
@@ -147,7 +150,7 @@ export default function OtrosParams({ formData, onChange }: Props) {
             <Plus className="w-4 h-4 mr-2" /> Agregar actividad
           </Button>
         </div>
-      </CollapsibleSection>
+      </CollapsibleSection>}
     </>
   )
 }

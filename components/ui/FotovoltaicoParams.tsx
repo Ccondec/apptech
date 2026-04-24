@@ -8,6 +8,7 @@ interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   formData: Record<string, any>
   onChange: (field: string, value: string) => void
+  showOnly?: 'checklist' | 'params'
 }
 
 const SYSTEM_TYPES  = ['On-Grid (Red)', 'Off-Grid (Aislado)', 'Híbrido', 'FNCER']
@@ -67,7 +68,7 @@ const NumField = ({ id, label, unit, value, onChange }: {
   </div>
 )
 
-export default function FotovoltaicoParams({ formData, onChange }: Props) {
+export default function FotovoltaicoParams({ formData, onChange, showOnly }: Props) {
   const checkedItems: string[] = formData.checkedItems || []
 
   const toggleItem = (item: string) => {
@@ -82,8 +83,8 @@ export default function FotovoltaicoParams({ formData, onChange }: Props) {
 
   return (
     <>
-      {/* Checklist FV — primero, igual que UPS */}
-      <CollapsibleSection title="Lista de Actividades" icon={CheckSquare}>
+      {/* Checklist FV */}
+      {showOnly !== 'params' && <CollapsibleSection title="Lista de Actividades" icon={CheckSquare}>
         <div className="space-y-4">
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-gray-500">
@@ -117,9 +118,10 @@ export default function FotovoltaicoParams({ formData, onChange }: Props) {
             })}
           </div>
         </div>
-      </CollapsibleSection>
+      </CollapsibleSection>}
 
       {/* Especificaciones sistema fotovoltaico */}
+      {showOnly !== 'checklist' && <>
       <CollapsibleSection title="Especificaciones del Sistema Fotovoltaico" icon={Sun}>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -239,6 +241,7 @@ export default function FotovoltaicoParams({ formData, onChange }: Props) {
           ))}
         </div>
       </CollapsibleSection>
+      </>}
     </>
   )
 }

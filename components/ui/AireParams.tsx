@@ -8,6 +8,7 @@ interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   formData: Record<string, any>
   onChange: (field: string, value: string) => void
+  showOnly?: 'checklist' | 'params'
 }
 
 const AC_TYPES    = ['Split', 'Cassette', 'Central', 'VRF / VRV', 'Chiller', 'Fancoil']
@@ -70,7 +71,7 @@ const NumField = ({
   </div>
 )
 
-export default function AireParams({ formData, onChange }: Props) {
+export default function AireParams({ formData, onChange, showOnly }: Props) {
   const checkedItems: string[] = formData.checkedItems || []
 
   const toggleItem = (item: string) => {
@@ -85,8 +86,8 @@ export default function AireParams({ formData, onChange }: Props) {
 
   return (
     <>
-      {/* Checklist AC — primero, igual que UPS */}
-      <CollapsibleSection title="Lista de Actividades" icon={CheckSquare}>
+      {/* Checklist AC */}
+      {showOnly !== 'params' && <CollapsibleSection title="Lista de Actividades" icon={CheckSquare}>
         <div className="space-y-4">
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-gray-500">
@@ -120,9 +121,10 @@ export default function AireParams({ formData, onChange }: Props) {
             })}
           </div>
         </div>
-      </CollapsibleSection>
+      </CollapsibleSection>}
 
       {/* Especificaciones AC */}
+      {showOnly !== 'checklist' && <>
       <CollapsibleSection title="Especificaciones del Sistema AC" icon={Wind}>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -219,6 +221,7 @@ export default function AireParams({ formData, onChange }: Props) {
           ))}
         </div>
       </CollapsibleSection>
+      </>}
     </>
   )
 }

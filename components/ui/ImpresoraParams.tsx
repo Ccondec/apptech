@@ -8,6 +8,7 @@ interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   formData: Record<string, any>
   onChange: (field: string, value: unknown) => void
+  showOnly?: 'checklist' | 'params'
 }
 
 interface CheckRow { id: number; text: string; checked: boolean }
@@ -27,7 +28,7 @@ const DEFAULT_CHECKLIST: Omit<CheckRow, 'id'>[] = [
   { text: 'Verificación de cola de impresión',        checked: false },
 ]
 
-export default function ImpresoraParams({ formData, onChange }: Props) {
+export default function ImpresoraParams({ formData, onChange, showOnly }: Props) {
   // Inicializar checklist con valores por defecto si está vacío
   const checks: CheckRow[] = React.useMemo(() => {
     const stored = formData.impresoraChecklist
@@ -54,7 +55,7 @@ export default function ImpresoraParams({ formData, onChange }: Props) {
   return (
     <>
       {/* Lista de Actividades */}
-      <CollapsibleSection title="Lista de Actividades" icon={ClipboardList} initiallyOpen>
+      {showOnly !== 'params' && <CollapsibleSection title="Lista de Actividades" icon={ClipboardList} initiallyOpen>
         <div className="space-y-3">
           {total > 0 && (
             <div className="space-y-1 mb-2">
@@ -81,9 +82,10 @@ export default function ImpresoraParams({ formData, onChange }: Props) {
             </label>
           ))}
         </div>
-      </CollapsibleSection>
+      </CollapsibleSection>}
 
       {/* Especificaciones */}
+      {showOnly !== 'checklist' && <>
       <CollapsibleSection title="Especificaciones del Equipo" icon={Printer} initiallyOpen>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1">
@@ -268,6 +270,7 @@ export default function ImpresoraParams({ formData, onChange }: Props) {
           </div>
         </div>
       </CollapsibleSection>
+      </>}
     </>
   )
 }

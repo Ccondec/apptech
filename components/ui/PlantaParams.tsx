@@ -8,6 +8,7 @@ interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   formData: Record<string, any>
   onChange: (field: string, value: string) => void
+  showOnly?: 'checklist' | 'params'
 }
 
 const FUEL_TYPES = ['Diésel', 'Gas Natural', 'GLP', 'Gasolina', 'Bifuel']
@@ -71,7 +72,7 @@ const NumField = ({
   </div>
 )
 
-export default function PlantaParams({ formData, onChange }: Props) {
+export default function PlantaParams({ formData, onChange, showOnly }: Props) {
   const checkedItems: string[] = formData.checkedItems || []
 
   const toggleItem = (item: string) => {
@@ -86,8 +87,8 @@ export default function PlantaParams({ formData, onChange }: Props) {
 
   return (
     <>
-      {/* Checklist Planta — primero, igual que UPS */}
-      <CollapsibleSection title="Lista de Actividades" icon={CheckSquare}>
+      {/* Checklist Planta */}
+      {showOnly !== 'params' && <CollapsibleSection title="Lista de Actividades" icon={CheckSquare}>
         <div className="space-y-4">
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-gray-500">
@@ -121,9 +122,10 @@ export default function PlantaParams({ formData, onChange }: Props) {
             })}
           </div>
         </div>
-      </CollapsibleSection>
+      </CollapsibleSection>}
 
       {/* Especificaciones Planta */}
+      {showOnly !== 'checklist' && <>
       <CollapsibleSection title="Especificaciones del Generador" icon={Fuel}>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -211,6 +213,7 @@ export default function PlantaParams({ formData, onChange }: Props) {
           ))}
         </div>
       </CollapsibleSection>
+      </>}
     </>
   )
 }

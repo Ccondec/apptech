@@ -2863,18 +2863,18 @@ yPosition += 8;
               </div>
             </CollapsibleSection>
 
-            {/* Lista de Actividades — todos los tipos, justo después del cliente */}
+            {/* Lista de Actividades — posición 2, igual para todos los tipos */}
             {(!formData.reportType || formData.reportType === 'ups') && (
               <ChecklistSection
                 checkedItems={formData.checkedItems || []}
                 onCheckChange={(items) => handleFieldChange('checkedItems', items)}
               />
             )}
-            {formData.reportType === 'aire'         && <AireParams         formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'planta'       && <PlantaParams       formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'fotovoltaico' && <FotovoltaicoParams formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'impresora'    && <ImpresoraParams    formData={formData} onChange={handleFieldChange} />}
-            {formData.reportType === 'otros'        && <OtrosParams        formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'aire'         && <AireParams         showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'planta'       && <PlantaParams       showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'fotovoltaico' && <FotovoltaicoParams showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'impresora'    && <ImpresoraParams    showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'otros'        && <OtrosParams        showOnly="checklist" formData={formData} onChange={handleFieldChange} />}
 
             {/* Información del Servicio */}
             <ServiceInfoSection
@@ -3091,6 +3091,13 @@ yPosition += 8;
                 </div>
               </div>
             )}
+
+            {/* Parámetros específicos — todos los tipos excepto UPS */}
+            {formData.reportType === 'aire'         && <AireParams         showOnly="params" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'planta'       && <PlantaParams       showOnly="params" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'fotovoltaico' && <FotovoltaicoParams showOnly="params" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'impresora'    && <ImpresoraParams    showOnly="params" formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'otros'        && <OtrosParams        showOnly="params" formData={formData} onChange={handleFieldChange} />}
 
             {/* Parámetros Eléctricos — solo UPS */}
             {(!formData.reportType || formData.reportType === 'ups') && (
