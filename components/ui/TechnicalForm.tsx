@@ -7,10 +7,11 @@ import AireParams from './AireParams'
 import PlantaParams from './PlantaParams'
 import FotovoltaicoParams from './FotovoltaicoParams'
 import OtrosParams from './OtrosParams'
+import ImpresoraParams from './ImpresoraParams'
 
 type Photo = { id: number; url: string; description: string; posX?: number; posY?: number };
 type MaterialRow = { id: string; item: string; qty: string; ref: string };
-type ReportType = 'ups' | 'aire' | 'planta' | 'fotovoltaico' | 'otros';
+type ReportType = 'ups' | 'aire' | 'planta' | 'fotovoltaico' | 'otros' | 'impresora';
 
 // ── IndexedDB: persistencia de fotos ────────────────────────
 const IDB_NAME = 'apptech_db'
@@ -165,6 +166,7 @@ const REPORT_TYPES: { id: ReportType; label: string; icon: string }[] = [
   { id: 'aire',         label: 'Aires Acondicionados', icon: '❄️' },
   { id: 'planta',       label: 'Plantas Eléctricas',   icon: '⚡' },
   { id: 'fotovoltaico', label: 'Sistema Fotovoltaico', icon: '☀️' },
+  { id: 'impresora',    label: 'Impresoras',           icon: '🖨️' },
   { id: 'otros',        label: 'Otros Informes',       icon: '📋' },
 ];
 
@@ -993,7 +995,7 @@ const ServiceTypeSection = ({ selectedServices, onServiceChange }: { selectedSer
 
 // Main Component with optimizations
 const TIPO_PREFIX: Record<string, string> = {
-  ups: 'UPS', aire: 'AIR', planta: 'PLT', fotovoltaico: 'FTV', otros: 'OTR',
+  ups: 'UPS', aire: 'AIR', planta: 'PLT', fotovoltaico: 'FTV', impresora: 'IMP', otros: 'OTR',
 }
 
 const fmtReportNum = (n: number, tipo = 'ups') => formatearNumeroInforme(n, tipo);
@@ -1518,6 +1520,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
       aire:         'Aires Acondicionados',
       planta:       'Planta Eléctrica',
       fotovoltaico: 'Sistema Fotovoltaico',
+      impresora:    'Mantenimiento de Impresoras',
       otros:        'Otros Servicios',
     }
     const tipoInforme = tipoLabel[formData.reportType as string] ?? 'UPS / Baterías'
@@ -2199,6 +2202,70 @@ yPosition += 8;
     // Add section divider
     addSectionDivider();
 
+    // ── Sección Impresora ──────────────────────────────────────
+    if (formData.reportType === 'impresora') {
+      // Checklist de actividades
+      const imprChecks: { id: number; text: string; checked: boolean }[] = formData.impresoraChecklist ?? []
+      if (imprChecks.length > 0) {
+        addSectionDivider()
+        checkPageBreak(15)
+        pdf.setFontSize(12)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text('LISTA DE ACTIVIDADES', margin, yPosition)
+        yPosition += 8
+        const doneIC = imprChecks.filter(c => c.checked).length
+        pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(80,80,80)
+        pdf.text(`${doneIC} de ${imprChecks.length} actividades completadas (${Math.round(doneIC/imprChecks.length*100)}%)`, margin, yPosition)
+        pdf.setTextColor(0,0,0); yPosition += 6
+        const cols2 = 2; const colW2 = contentWidth / cols2
+        imprChecks.forEach((c, idx) => {
+          const col = idx % cols2; const row = Math.floor(idx / cols2)
+          if (col === 0) checkPageBreak(6)
+          const xPos = margin + col * colW2
+          const yPos = yPosition + row * 5.5
+          pdf.setFontSize(8); pdf.setFont('helvetica', 'normal')
+          pdf.text(c.checked ? '[OK]' : '[ ]', xPos, yPos)
+          const fitted = pdf.splitTextToSize(c.text, colW2 - 12)
+          pdf.text(fitted[0], xPos + 10, yPos)
+        })
+        yPosition += Math.ceil(imprChecks.length / cols2) * 5.5 + 4
+      }
+
+      // Especificaciones + consumibles + prueba
+      const imprFields: [string, string][] = [
+        ['Tipo de impresora:', formData.impresoraTipo || 'N/A'],
+        ['Formato de papel:', formData.impresoraFormato || 'N/A'],
+        ['Conectividad:', formData.impresoraConectividad || 'N/A'],
+        ['Contador de páginas:', formData.impresoraContador ? String(formData.impresoraContador) : 'N/A'],
+        ['Nivel tóner/tinta:', formData.impresoraNivelToner || 'N/A'],
+        ['Tóner reemplazado:', formData.impresoraTonerReemplazado || 'N/A'],
+        ['Estado del fusor:', formData.impresoraFusor || 'N/A'],
+        ['Kit de mantenimiento:', formData.impresoraKitMant || 'N/A'],
+        ['Página de prueba:', formData.impresoraPrueba || 'N/A'],
+        ['Calidad de impresión:', formData.impresoraCalidad || 'N/A'],
+        ['Fallas encontradas:', formData.impresoraFallas || 'Ninguna'],
+      ]
+      addSectionDivider()
+      checkPageBreak(15)
+      pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
+      pdf.text('ESPECIFICACIONES DE LA IMPRESORA', margin, yPosition)
+      yPosition += 8
+      const cols3 = 3; const colW3 = contentWidth / cols3
+      imprFields.forEach(([label, value], idx) => {
+        const col = idx % cols3; const row = Math.floor(idx / cols3)
+        if (col === 0) checkPageBreak(6)
+        const xPos = margin + col * colW3
+        const yPos = yPosition + row * 7
+        pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+        pdf.text(label, xPos, yPos)
+        pdf.setFont('helvetica', 'normal')
+        const val = pdf.splitTextToSize(value, colW3 - 2)
+        pdf.text(val[0], xPos, yPos + 4)
+      })
+      yPosition += Math.ceil(imprFields.length / cols3) * 7 + 4
+      addSectionDivider()
+    }
+
     // Photos Section — ANTES de descripción y recomendaciones
     const rawPhotos: Photo[] = emailPhotosRef.current ?? (formData.photos ?? [])
     const photosToRender: Photo[] = await Promise.all(
@@ -2806,6 +2873,7 @@ yPosition += 8;
             {formData.reportType === 'aire'         && <AireParams         formData={formData} onChange={handleFieldChange} />}
             {formData.reportType === 'planta'       && <PlantaParams       formData={formData} onChange={handleFieldChange} />}
             {formData.reportType === 'fotovoltaico' && <FotovoltaicoParams formData={formData} onChange={handleFieldChange} />}
+            {formData.reportType === 'impresora'    && <ImpresoraParams    formData={formData} onChange={handleFieldChange} />}
             {formData.reportType === 'otros'        && <OtrosParams        formData={formData} onChange={handleFieldChange} />}
 
             {/* Información del Servicio */}
