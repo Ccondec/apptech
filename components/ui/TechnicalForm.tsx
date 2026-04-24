@@ -2233,17 +2233,17 @@ yPosition += 8;
 
       // Especificaciones + consumibles + prueba
       const imprFields: [string, string][] = [
-        ['Tipo de impresora:', formData.impresoraTipo || 'N/A'],
-        ['Formato de papel:', formData.impresoraFormato || 'N/A'],
-        ['Conectividad:', formData.impresoraConectividad || 'N/A'],
+        ['Tipo de impresora:', String(formData.impresoraTipo || 'N/A')],
+        ['Formato de papel:', String(formData.impresoraFormato || 'N/A')],
+        ['Conectividad:', String(formData.impresoraConectividad || 'N/A')],
         ['Contador de páginas:', formData.impresoraContador ? String(formData.impresoraContador) : 'N/A'],
-        ['Nivel tóner/tinta:', formData.impresoraNivelToner || 'N/A'],
-        ['Tóner reemplazado:', formData.impresoraTonerReemplazado || 'N/A'],
-        ['Estado del fusor:', formData.impresoraFusor || 'N/A'],
-        ['Kit de mantenimiento:', formData.impresoraKitMant || 'N/A'],
-        ['Página de prueba:', formData.impresoraPrueba || 'N/A'],
-        ['Calidad de impresión:', formData.impresoraCalidad || 'N/A'],
-        ['Fallas encontradas:', formData.impresoraFallas || 'Ninguna'],
+        ['Nivel toner/tinta:', String(formData.impresoraNivelToner || 'N/A')],
+        ['Toner reemplazado:', String(formData.impresoraTonerReemplazado || 'N/A')],
+        ['Estado del fusor:', String(formData.impresoraFusor || 'N/A')],
+        ['Kit de mantenimiento:', String(formData.impresoraKitMant || 'N/A')],
+        ['Pagina de prueba:', String(formData.impresoraPrueba || 'N/A')],
+        ['Calidad de impresion:', String(formData.impresoraCalidad || 'N/A')],
+        ['Fallas encontradas:', String(formData.impresoraFallas || 'Ninguna')],
       ]
       addSectionDivider()
       checkPageBreak(15)
