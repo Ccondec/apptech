@@ -342,12 +342,17 @@ export async function listarInformesEmpresa(opts: {
   return data ?? []
 }
 
-export async function listarHistorialEquipo(equipoId: string, qrCode?: string): Promise<InformeRecord[]> {
+export async function listarHistorialEquipo(equipoId: string, qrCode?: string, empresaId?: string): Promise<InformeRecord[]> {
   let query = supabase
     .from('informes')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(30)
+
+  // Siempre filtrar por empresa para evitar cruce de datos entre clientes
+  if (empresaId) {
+    query = query.eq('empresa_id', empresaId)
+  }
 
   if (qrCode) {
     // Traer por equipo_id O por qr_code para no perder informes viejos
@@ -451,7 +456,14 @@ export async function listarFormTokens(): Promise<FormToken[]> {
 }
 
 export async function desactivarFormToken(tokenId: string): Promise<boolean> {
-  const { error } = await supabase.from('form_tokens').update({ activo: false }).eq('id', tokenId)
+  const usuario = await getUsuarioActual()
+  if (!usuario) return false
+  // Filtrar también por empresa_id para que solo pueda desactivar sus propios tokens
+  const { error } = await supabase
+    .from('form_tokens')
+    .update({ activo: false })
+    .eq('id', tokenId)
+    .eq('empresa_id', usuario.empresa_id)
   return !error
 }
 
@@ -502,9 +514,13 @@ export function formatearNumeroInforme(n: number, tipo: string): string {
 
 export async function siguienteQrEquipo(empresaId: string): Promise<string> {
   try {
+    const session = await getSession()
     const res = await fetch('/api/siguiente-qr', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+      },
       body: JSON.stringify({ empresa_id: empresaId }),
     })
     if (!res.ok) throw new Error('API error')
@@ -695,17 +711,23 @@ export async function actualizarMarca(
   id: string,
   campos: { nombre: string; logo_url: string | null; telefono?: string; direccion?: string; ciudad?: string; email?: string }
 ): Promise<boolean> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return false
   const { error } = await supabase
     .from('marcas')
     .update(campos)
     .eq('id', id)
+    .eq('empresa_id', usuario.empresa_id)
   return !error
 }
 
 export async function eliminarMarca(id: string): Promise<boolean> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return false
   const { error } = await supabase
     .from('marcas')
     .update({ activo: false })
     .eq('id', id)
+    .eq('empresa_id', usuario.empresa_id)
   return !error
 }

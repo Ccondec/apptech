@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getAuthEmpresa } from '@/lib/api-auth'
 
 export async function POST(req: NextRequest) {
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -7,9 +8,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Configuración de servidor incompleta' }, { status: 500 })
   }
 
-  const { email, password, nombre, rol, empresa_id, client_company } = await req.json()
+  // Validar que el solicitante es admin autenticado
+  const auth = await getAuthEmpresa(req)
+  if (!auth) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
 
-  if (!email || !password || !nombre || !rol || !empresa_id) {
+  const { email, password, nombre, rol, client_company } = await req.json()
+  // Siempre usar la empresa_id del JWT, nunca la del body
+  const empresa_id = auth.empresaId
+
+  if (!email || !password || !nombre || !rol) {
     return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 })
   }
 

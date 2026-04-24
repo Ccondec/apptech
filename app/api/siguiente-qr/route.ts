@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getAuthEmpresa } from '@/lib/api-auth'
 
 export async function POST(req: NextRequest) {
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!SERVICE_KEY) return NextResponse.json({ error: 'Config missing' }, { status: 500 })
 
-  const { empresa_id } = await req.json()
-  if (!empresa_id) return NextResponse.json({ error: 'empresa_id requerido' }, { status: 400 })
+  // Validar autenticación y usar empresa_id del JWT
+  const auth = await getAuthEmpresa(req)
+  if (!auth) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  const empresa_id = auth.empresaId
 
   const admin = createClient('https://deouxnumhspmollumsoz.supabase.co', SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },

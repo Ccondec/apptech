@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { supabase, Usuario, importarClientes, importarEquipos, setConsecutivoInicial, ImportEquipoRow, ClienteRecord } from '@/lib/supabase'
+import { supabase, getSession, Usuario, importarClientes, importarEquipos, setConsecutivoInicial, ImportEquipoRow, ClienteRecord } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -90,7 +90,10 @@ export default function AdminPage() {
     if (!user) return
     setLoadingUsers(true)
     try {
-      const res = await fetch(`/api/listar-usuarios?empresa_id=${user.empresa_id}`)
+      const session = await getSession()
+      const res = await fetch(`/api/listar-usuarios`, {
+        headers: session ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+      })
       const json = await res.json()
       if (res.ok) {
         setUsuarios(json.usuarios ?? [])
@@ -151,15 +154,18 @@ export default function AdminPage() {
     setCreateError('')
     setCreating(true)
 
+    const session = await getSession()
     const res = await fetch('/api/crear-usuario', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+      },
       body: JSON.stringify({
         email: newUserEmail,
         password: newUserPass,
         nombre: newUserNombre,
         rol: newUserRol,
-        empresa_id: user!.empresa_id,
         ...(newUserRol === 'cliente' ? { client_company: newUserClientCompany } : {}),
       }),
     })
