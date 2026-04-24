@@ -18,7 +18,8 @@ export default function AdminPage() {
   const [copied, setCopied] = useState(false)
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserNombre, setNewUserNombre] = useState('')
-  const [newUserRol, setNewUserRol] = useState<'tecnico' | 'admin'>('tecnico')
+  const [newUserRol, setNewUserRol] = useState<'tecnico' | 'admin' | 'cliente'>('tecnico')
+  const [newUserClientCompany, setNewUserClientCompany] = useState('')
   const [newUserPass, setNewUserPass] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
@@ -118,6 +119,7 @@ export default function AdminPage() {
         nombre: newUserNombre,
         rol: newUserRol,
         empresa_id: user!.empresa_id,
+        ...(newUserRol === 'cliente' ? { client_company: newUserClientCompany } : {}),
       }),
     })
 
@@ -131,7 +133,7 @@ export default function AdminPage() {
 
     setCreating(false)
     setCreateSuccess(true)
-    setNewUserEmail(''); setNewUserNombre(''); setNewUserPass('')
+    setNewUserEmail(''); setNewUserNombre(''); setNewUserPass(''); setNewUserClientCompany('')
     setTimeout(() => setCreateSuccess(false), 3000)
     cargarUsuarios()
   }
@@ -606,13 +608,27 @@ export default function AdminPage() {
               <select
                 id="newRol"
                 value={newUserRol}
-                onChange={e => setNewUserRol(e.target.value as 'tecnico' | 'admin')}
+                onChange={e => setNewUserRol(e.target.value as 'tecnico' | 'admin' | 'cliente')}
                 className="w-full h-10 border border-gray-200 rounded-md px-3 text-sm bg-white"
               >
                 <option value="tecnico">Técnico</option>
                 <option value="admin">Administrador</option>
+                <option value="cliente">Cliente (portal)</option>
               </select>
             </div>
+            {newUserRol === 'cliente' && (
+              <div className="col-span-2 space-y-1">
+                <Label htmlFor="newClientCompany">Empresa del cliente</Label>
+                <Input
+                  id="newClientCompany"
+                  value={newUserClientCompany}
+                  onChange={e => setNewUserClientCompany(e.target.value)}
+                  placeholder="Nombre exacto del cliente en los informes (ej: ORTOCLINICA)"
+                  required
+                />
+                <p className="text-xs text-gray-400">Debe coincidir exactamente con el nombre usado en los informes.</p>
+              </div>
+            )}
             {createError && <p className="col-span-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{createError}</p>}
             {createSuccess && <p className="col-span-2 text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">✓ Usuario creado exitosamente.</p>}
             <div className="col-span-2">

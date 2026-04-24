@@ -33,9 +33,10 @@ export interface Usuario {
   id: string
   empresa_id: string
   nombre: string
-  rol: 'admin' | 'tecnico'
+  rol: 'admin' | 'tecnico' | 'cliente'
   activo: boolean
   must_change_password?: boolean
+  client_company?: string
 }
 
 export interface ClienteRecord {
@@ -357,7 +358,7 @@ export async function uploadReportePdf(
   const { error } = await supabase.storage
     .from('reportes')
     .upload(path, arrayBuffer, { contentType: 'application/pdf', upsert: true })
-  if (error) { console.error('Storage upload error:', error.message); return null }
+  if (error) { return null }
   const { data } = supabase.storage.from('reportes').getPublicUrl(path)
   return data.publicUrl
 }
@@ -470,7 +471,7 @@ export async function siguienteNumeroInforme(empresaId: string, _tipoReporte?: s
     p_empresa_id: empresaId,
     p_tipo: 'global',
   })
-  if (error) { console.error('siguienteNumeroInforme error:', error); return 1 }
+  if (error) { return 1 }
   return (data as number) ?? 1
 }
 
@@ -487,15 +488,20 @@ export function formatearNumeroInforme(n: number, tipo: string): string {
 // ── QR consecutivo por empresa ────────────────────────────────
 
 export async function siguienteQrEquipo(empresaId: string): Promise<string> {
-  const { data, error } = await supabase.rpc('siguiente_qr_equipo', {
-    p_empresa_id: empresaId,
-  })
-  if (error) { console.error('siguienteQrEquipo error:', error); return 'EQ-0001' }
-  const base = (data as string) ?? 'EQ-0001'
-  // Prefijo único por empresa (primeros 6 chars del UUID en mayúsculas)
-  // Ejemplo: "ABC123-EQ-0001" — evita colisiones entre empresas
-  const prefix = empresaId.replace(/-/g, '').slice(0, 6).toUpperCase()
-  return `${prefix}-${base}`
+  try {
+    const res = await fetch('/api/siguiente-qr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ empresa_id: empresaId }),
+    })
+    if (!res.ok) throw new Error('API error')
+    const { qr } = await res.json()
+    return qr ?? 'EQ-0001'
+  } catch {
+    // Fallback con timestamp para evitar colisiones
+    const prefix = empresaId.replace(/-/g, '').slice(0, 6).toUpperCase()
+    return `${prefix}-EQ-${Date.now().toString().slice(-4)}`
+  }
 }
 
 export async function buscarEquipoPorSerial(serial: string, empresaId?: string): Promise<EquipoRecord | null> {

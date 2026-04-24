@@ -7,10 +7,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Configuración de servidor incompleta' }, { status: 500 })
   }
 
-  const { email, password, nombre, rol, empresa_id } = await req.json()
+  const { email, password, nombre, rol, empresa_id, client_company } = await req.json()
 
   if (!email || !password || !nombre || !rol || !empresa_id) {
     return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 })
+  }
+
+  if (rol === 'cliente' && !client_company) {
+    return NextResponse.json({ error: 'Debe especificar la empresa del cliente' }, { status: 400 })
   }
 
   const admin = createClient('https://deouxnumhspmollumsoz.supabase.co', SERVICE_KEY, {
@@ -62,6 +66,7 @@ export async function POST(req: NextRequest) {
       empresa_id,
       activo: true,
       must_change_password: true,
+      ...(client_company ? { client_company } : {}),
     }).eq('id', userId)
   } else {
     // Insertar perfil nuevo
@@ -72,6 +77,7 @@ export async function POST(req: NextRequest) {
       rol,
       activo: true,
       must_change_password: true,
+      ...(client_company ? { client_company } : {}),
     })
 
     if (dbErr) {

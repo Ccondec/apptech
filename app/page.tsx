@@ -13,6 +13,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!loading && !user) router.push('/login')
     if (!loading && user && mustChangePassword) router.push('/cambiar-password')
+    if (!loading && user && user.rol === 'cliente') router.push('/portal')
   }, [loading, user, mustChangePassword, router])
 
   if (loading) {

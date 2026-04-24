@@ -916,7 +916,7 @@ const MaterialsSection = ({ formData, setFormData }: { formData: Record<string, 
 const ServiceTypeSection = ({ selectedServices, onServiceChange }: { selectedServices: string[]; onServiceChange: (services: string[]) => void }) => {
   const serviceOptions = [
     'Mantenimiento Preventivo',
-    'Cambio de Baterías',
+    'Servicio Emergente',
     'Revision y Diagnóstico',
     'Mantenimiento Correctivo',
     'Instalación y Arranque',
