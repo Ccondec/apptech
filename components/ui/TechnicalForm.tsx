@@ -2205,7 +2205,7 @@ yPosition += 8;
     // ── Sección Impresora ──────────────────────────────────────
     if (formData.reportType === 'impresora') {
       // Checklist de actividades
-      const imprChecks: { id: number; text: string; checked: boolean }[] = formData.impresoraChecklist ?? []
+      const imprChecks: { id: number; text: string; checked: boolean }[] = (formData.impresoraChecklist as { id: number; text: string; checked: boolean }[]) ?? []
       if (imprChecks.length > 0) {
         addSectionDivider()
         checkPageBreak(15)
