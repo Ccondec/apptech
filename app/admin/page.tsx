@@ -679,13 +679,22 @@ export default function AdminPage() {
                       {u.activo ? 'Activo' : 'Inactivo'}
                     </span>
                     {u.id !== user.id && (
-                      <button
-                        onClick={() => eliminarUsuario(u)}
-                        className="text-gray-300 hover:text-red-500"
-                        title="Eliminar usuario"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => toggleActivo(u)}
+                          className="text-gray-400 hover:text-gray-600"
+                          title={u.activo ? 'Desactivar' : 'Activar'}
+                        >
+                          {u.activo ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={() => eliminarUsuario(u)}
+                          className="text-gray-300 hover:text-red-500"
+                          title="Eliminar usuario"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
