@@ -6,8 +6,8 @@ import { supabase, getSession, Usuario, importarClientes, importarEquipos, setCo
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup } from 'lucide-react'
-import { crearFormToken, listarFormTokens, desactivarFormToken, FormToken } from '@/lib/supabase'
+import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup, ClipboardList, SendHorizonal } from 'lucide-react'
+import { crearFormToken, listarFormTokens, desactivarFormToken, FormToken, crearAsignacion, listarAsignaciones, cancelarAsignacion, Asignacion } from '@/lib/supabase'
 
 export default function AdminPage() {
   const { user, loading } = useAuth()
@@ -29,6 +29,19 @@ export default function AdminPage() {
   const [tokenDesc, setTokenDesc] = useState('')
   const [generatingToken, setGeneratingToken] = useState(false)
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null)
+
+  // Asignaciones
+  const [asignaciones, setAsignaciones] = useState<Asignacion[]>([])
+  const [asigTecnico, setAsigTecnico] = useState('')
+  const [asigTipo, setAsigTipo] = useState('ups')
+  const [asigCliente, setAsigCliente] = useState('')
+  const [asigSerial, setAsigSerial] = useState('')
+  const [asigMarca, setAsigMarca] = useState('')
+  const [asigModelo, setAsigModelo] = useState('')
+  const [asigUbicacion, setAsigUbicacion] = useState('')
+  const [asigDias, setAsigDias] = useState('30')
+  const [creandoAsig, setCreandoAsig] = useState(false)
+  const [copiedAsigId, setCopiedAsigId] = useState<string | null>(null)
 
   // Excel import — dos archivos separados
   const fileClientesRef = useRef<HTMLInputElement>(null)
@@ -135,6 +148,44 @@ export default function AdminPage() {
   const desactivar = async (tokenId: string) => {
     await desactivarFormToken(tokenId)
     cargarTokens()
+  }
+
+  const cargarAsignaciones = async () => {
+    const data = await listarAsignaciones()
+    setAsignaciones(data)
+  }
+
+  useEffect(() => { cargarAsignaciones() }, [])
+
+  const crearAsig = async () => {
+    if (!asigCliente.trim() || !asigTipo) return
+    setCreandoAsig(true)
+    const preset: Record<string, unknown> = {
+      reportType: asigTipo,
+      clientCompany: asigCliente.trim(),
+    }
+    if (asigSerial.trim())    preset.equipmentSerial    = asigSerial.trim()
+    if (asigMarca.trim())     preset.equipmentBrand     = asigMarca.trim()
+    if (asigModelo.trim())    preset.equipmentModel     = asigModelo.trim()
+    if (asigUbicacion.trim()) preset.equipmentUbicacion = asigUbicacion.trim()
+    const asig = await crearAsignacion(asigTecnico.trim(), asigTipo, preset, Number(asigDias) || 30)
+    if (asig) {
+      setAsigTecnico(''); setAsigCliente(''); setAsigSerial('')
+      setAsigMarca(''); setAsigModelo(''); setAsigUbicacion('')
+      cargarAsignaciones()
+    }
+    setCreandoAsig(false)
+  }
+
+  const copiarEnlaceAsig = (id: string) => {
+    navigator.clipboard.writeText(`https://snelapp.com/asignacion/${id}`)
+    setCopiedAsigId(id)
+    setTimeout(() => setCopiedAsigId(null), 2000)
+  }
+
+  const cancelarAsig = async (id: string) => {
+    await cancelarAsignacion(id)
+    cargarAsignaciones()
   }
 
   const toggleActivo = async (u: Usuario) => {
@@ -790,6 +841,175 @@ export default function AdminPage() {
         </div>
 
 
+
+        {/* Asignar informe a técnico */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
+            <ClipboardList className="w-4 h-4" /> Asignar informe a técnico
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Crea un enlace pre-llenado con datos del cliente y equipo. El técnico solo completa el trabajo técnico.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Técnico asignado <span className="text-gray-400">(opcional)</span></label>
+              <input
+                type="text"
+                value={asigTecnico}
+                onChange={e => setAsigTecnico(e.target.value)}
+                placeholder="Nombre del técnico"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Tipo de servicio <span className="text-red-400">*</span></label>
+              <select
+                value={asigTipo}
+                onChange={e => setAsigTipo(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+              >
+                <option value="ups">UPS / Baterías</option>
+                <option value="aire">Aires Acondicionados</option>
+                <option value="planta">Plantas Eléctricas</option>
+                <option value="fotovoltaico">Sistema Fotovoltaico</option>
+                <option value="impresora">Impresoras</option>
+                <option value="apantallamiento">Apant. / Puesta a Tierra</option>
+                <option value="otros">Otros Servicios</option>
+              </select>
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="text-xs font-medium text-gray-600">Empresa cliente <span className="text-red-400">*</span></label>
+              <input
+                type="text"
+                value={asigCliente}
+                onChange={e => setAsigCliente(e.target.value)}
+                placeholder="Nombre de la empresa"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Marca del equipo</label>
+              <input
+                type="text"
+                value={asigMarca}
+                onChange={e => setAsigMarca(e.target.value)}
+                placeholder="Ej: APC"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Modelo del equipo</label>
+              <input
+                type="text"
+                value={asigModelo}
+                onChange={e => setAsigModelo(e.target.value)}
+                placeholder="Ej: Smart-UPS 3000"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Serial del equipo</label>
+              <input
+                type="text"
+                value={asigSerial}
+                onChange={e => setAsigSerial(e.target.value)}
+                placeholder="Número de serie"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Ubicación del equipo</label>
+              <input
+                type="text"
+                value={asigUbicacion}
+                onChange={e => setAsigUbicacion(e.target.value)}
+                placeholder="Piso 3, sala de servidores"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Vigencia (días)</label>
+              <input
+                type="number"
+                value={asigDias}
+                onChange={e => setAsigDias(e.target.value)}
+                min={1} max={365}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                onClick={crearAsig}
+                disabled={creandoAsig || !asigCliente.trim()}
+                className="w-full bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+              >
+                <SendHorizonal className="w-4 h-4" />
+                {creandoAsig ? 'Generando…' : 'Generar enlace'}
+              </Button>
+            </div>
+          </div>
+
+          {asignaciones.length > 0 && (
+            <div className="divide-y divide-gray-50 mt-2">
+              {asignaciones.map(asig => {
+                const expired = new Date(asig.expires_at) < new Date()
+                const pending = asig.estado === 'pendiente' && !expired
+                return (
+                  <div key={asig.id} className="py-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-gray-800 truncate">
+                          {String((asig.preset_data as Record<string,unknown>).clientCompany ?? '—')}
+                        </p>
+                        <span className="text-xs text-gray-400">·</span>
+                        <span className="text-xs text-gray-500">{asig.tipo_reporte}</span>
+                        {asig.tecnico_nombre && (
+                          <>
+                            <span className="text-xs text-gray-400">·</span>
+                            <span className="text-xs text-gray-500">{asig.tecnico_nombre}</span>
+                          </>
+                        )}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                          asig.estado === 'completado' ? 'bg-blue-100 text-blue-700'
+                          : expired ? 'bg-red-100 text-red-600'
+                          : 'bg-green-100 text-green-700'
+                        }`}>
+                          {asig.estado === 'completado' ? 'completado' : expired ? 'expirado' : 'pendiente'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Vence: {new Date(asig.expires_at).toLocaleDateString('es-CO')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {pending && (
+                        <button
+                          onClick={() => copiarEnlaceAsig(asig.id)}
+                          className="text-gray-400 hover:text-green-600 p-1"
+                          title="Copiar enlace"
+                        >
+                          {copiedAsigId === asig.id
+                            ? <CheckCircle className="w-4 h-4 text-green-600" />
+                            : <Copy className="w-4 h-4" />}
+                        </button>
+                      )}
+                      {pending && (
+                        <button
+                          onClick={() => cancelarAsig(asig.id)}
+                          className="text-gray-400 hover:text-red-500 p-1"
+                          title="Cancelar"
+                        >
+                          <UserX className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
       </main>
     </div>

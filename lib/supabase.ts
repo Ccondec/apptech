@@ -731,3 +731,82 @@ export async function eliminarMarca(id: string): Promise<boolean> {
     .eq('empresa_id', usuario.empresa_id)
   return !error
 }
+
+// ── Asignaciones de informes ──────────────────────────────────
+
+export interface Asignacion {
+  id: string
+  empresa_id: string
+  created_by: string
+  tecnico_nombre: string | null
+  tipo_reporte: string
+  preset_data: Record<string, unknown>
+  estado: 'pendiente' | 'completado'
+  informe_id: string | null
+  expires_at: string
+  created_at: string
+}
+
+export async function crearAsignacion(
+  tecnico_nombre: string,
+  tipo_reporte: string,
+  preset_data: Record<string, unknown>,
+  dias = 30,
+): Promise<Asignacion | null> {
+  const usuario = await getUsuarioActual()
+  if (!usuario || usuario.rol !== 'admin') return null
+  const { data } = await supabase
+    .from('asignaciones')
+    .insert({
+      empresa_id: usuario.empresa_id,
+      created_by: usuario.id,
+      tecnico_nombre: tecnico_nombre || null,
+      tipo_reporte,
+      preset_data,
+      estado: 'pendiente',
+      expires_at: new Date(Date.now() + dias * 24 * 60 * 60 * 1000).toISOString(),
+    })
+    .select()
+    .single()
+  return data ?? null
+}
+
+export async function listarAsignaciones(): Promise<Asignacion[]> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return []
+  const { data } = await supabase
+    .from('asignaciones')
+    .select('*')
+    .eq('empresa_id', usuario.empresa_id)
+    .order('created_at', { ascending: false })
+  return (data ?? []) as Asignacion[]
+}
+
+export async function cancelarAsignacion(id: string): Promise<boolean> {
+  const usuario = await getUsuarioActual()
+  if (!usuario) return false
+  const { error } = await supabase
+    .from('asignaciones')
+    .update({ estado: 'completado' })
+    .eq('id', id)
+    .eq('empresa_id', usuario.empresa_id)
+  return !error
+}
+
+export async function validarAsignacion(
+  tokenId: string,
+): Promise<{ empresaId: string; empresa: Empresa; asignacion: Asignacion } | null> {
+  const { data } = await supabase
+    .from('asignaciones')
+    .select('*, empresa:empresas(*)')
+    .eq('id', tokenId)
+    .eq('estado', 'pendiente')
+    .gt('expires_at', new Date().toISOString())
+    .single()
+  if (!data) return null
+  return {
+    empresaId: data.empresa_id,
+    empresa: data.empresa as Empresa,
+    asignacion: data as Asignacion,
+  }
+}

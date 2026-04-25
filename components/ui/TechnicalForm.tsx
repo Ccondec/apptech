@@ -1002,7 +1002,7 @@ const TIPO_PREFIX: Record<string, string> = {
 
 const fmtReportNum = (n: number, tipo = 'ups') => formatearNumeroInforme(n, tipo);
 
-const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { technician: string; empresaId?: string; onLogout?: () => void; externalToken?: string }) => {
+const TechnicalForm = ({ technician, empresaId, onLogout, externalToken, asignacionToken, presetData, onAsignacionDone }: { technician: string; empresaId?: string; onLogout?: () => void; externalToken?: string; asignacionToken?: string; presetData?: Record<string, unknown>; onAsignacionDone?: () => void }) => {
   const [formData, setFormData] = useState<FormData>({});
   const [reportNumber, setReportNumber] = useState(1);
   const [isEditingReportNumber, setIsEditingReportNumber] = useState(false);
@@ -1040,6 +1040,9 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
   const currentDate = new Date().toLocaleDateString();
   const currentTime = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
   const formRef = useRef<HTMLDivElement>(null);
+
+  // Devuelve true si el campo viene pre-llenado por una asignación (debe ser bloqueado)
+  const isPreset = (field: string) => !!(presetData && presetData[field] != null && presetData[field] !== '')
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cargar datos guardados al iniciar
@@ -1049,7 +1052,8 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
       const savedReportNumber = localStorage.getItem('apptech_report_number');
       const savedLogo = localStorage.getItem('apptech_logo');
 
-      if (savedData) setFormData(JSON.parse(savedData));
+      if (savedData) setFormData({ ...JSON.parse(savedData), ...(presetData ?? {}) });
+      else if (presetData) setFormData(presetData as FormData);
       if (savedReportNumber) setReportNumber(parseInt(savedReportNumber));
       if (savedLogo) setLogo(savedLogo);
       const savedPosX = localStorage.getItem('apptech_logo_posX')
@@ -1382,7 +1386,25 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
 
     // Sincronizar con Supabase (no bloquea el PDF)
     try {
-      if (externalToken) {
+      if (asignacionToken) {
+        // Modo asignación: guardar vía API con token de asignación
+        await fetch('/api/submit-asignacion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: asignacionToken,
+            informe: {
+              qr_code: qrCodeId || undefined,
+              numero_informe: repNum,
+              fecha, cliente: client, serial, marca: brand,
+              modelo: model, capacidad: capacity, ubicacion: location, tecnico,
+              tipo_reporte: formData.reportType ?? 'ups',
+              observaciones:   String(formData.description    ?? '').trim() || undefined,
+              recomendaciones: String(formData.recommendations ?? '').trim() || undefined,
+            },
+          }),
+        }).then(r => r.ok && onAsignacionDone?.()).catch(() => {})
+      } else if (externalToken) {
         // Modo externo: guardar vía API con token
         await fetch('/api/submit-informe-token', {
           method: 'POST',
@@ -3391,10 +3413,12 @@ yPosition += 8;
                       <Input
                         id="clientCompany"
                         value={String(formData.clientCompany ?? '')}
-                        onChange={(e) => handleClientCompanyChange(e.target.value)}
+                        onChange={(e) => !isPreset('clientCompany') && handleClientCompanyChange(e.target.value)}
                         onBlur={() => setTimeout(() => setShowClientSug(false), 150)}
                         placeholder="Nombre de la empresa"
                         autoComplete="off"
+                        readOnly={isPreset('clientCompany')}
+                        className={isPreset('clientCompany') ? 'bg-blue-50 border-blue-200 cursor-default' : ''}
                       />
                       {showClientSug && (
                         <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
@@ -3417,8 +3441,10 @@ yPosition += 8;
                     <Input
                       id="clientAddress"
                       value={String(formData.clientAddress ?? '')}
-                      onChange={(e) => handleFieldChange('clientAddress', e.target.value)}
+                      onChange={(e) => !isPreset('clientAddress') && handleFieldChange('clientAddress', e.target.value)}
                       placeholder="Dirección de la empresa"
+                      readOnly={isPreset('clientAddress')}
+                      className={isPreset('clientAddress') ? 'bg-blue-50 border-blue-200 cursor-default' : ''}
                     />
                   </div>
                   <div className="space-y-2">
@@ -3506,8 +3532,10 @@ yPosition += 8;
                   <Input
                     id="equipmentBrand"
                     value={String(formData.equipmentBrand ?? '')}
-                    onChange={(e) => handleFieldChange('equipmentBrand', e.target.value)}
+                    onChange={(e) => !isPreset('equipmentBrand') && handleFieldChange('equipmentBrand', e.target.value)}
                     placeholder="Marca del equipo"
+                    readOnly={isPreset('equipmentBrand')}
+                    className={isPreset('equipmentBrand') ? 'bg-blue-50 border-blue-200 cursor-default' : ''}
                   />
                 </div>
                 <div className="space-y-2">
@@ -3515,8 +3543,10 @@ yPosition += 8;
                   <Input
                     id="equipmentModel"
                     value={String(formData.equipmentModel ?? '')}
-                    onChange={(e) => handleFieldChange('equipmentModel', e.target.value)}
+                    onChange={(e) => !isPreset('equipmentModel') && handleFieldChange('equipmentModel', e.target.value)}
                     placeholder="Modelo del equipo"
+                    readOnly={isPreset('equipmentModel')}
+                    className={isPreset('equipmentModel') ? 'bg-blue-50 border-blue-200 cursor-default' : ''}
                   />
                 </div>
                 {(!formData.reportType || formData.reportType === 'ups') && (
@@ -3536,10 +3566,12 @@ yPosition += 8;
                     <Input
                       id="equipmentSerial"
                       value={String(formData.equipmentSerial ?? '')}
-                      onChange={(e) => handleEquipmentSerialChange(e.target.value)}
-                      onBlur={handleEquipmentSerialBlur}
+                      onChange={(e) => !isPreset('equipmentSerial') && handleEquipmentSerialChange(e.target.value)}
+                      onBlur={!isPreset('equipmentSerial') ? handleEquipmentSerialBlur : undefined}
                       placeholder="Número de serie"
                       autoComplete="off"
+                      readOnly={isPreset('equipmentSerial')}
+                      className={isPreset('equipmentSerial') ? 'bg-blue-50 border-blue-200 cursor-default' : ''}
                     />
                     {showEquipmentSug && (
                       <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
@@ -3563,8 +3595,10 @@ yPosition += 8;
                   <Input
                     id="equipmentUbicacion"
                     value={String(formData.equipmentUbicacion ?? '')}
-                    onChange={(e) => handleFieldChange('equipmentUbicacion', e.target.value)}
+                    onChange={(e) => !isPreset('equipmentUbicacion') && handleFieldChange('equipmentUbicacion', e.target.value)}
                     placeholder="Ubicación del equipo"
+                    readOnly={isPreset('equipmentUbicacion')}
+                    className={isPreset('equipmentUbicacion') ? 'bg-blue-50 border-blue-200 cursor-default' : ''}
                   />
                 </div>
                 <div className="space-y-2">
