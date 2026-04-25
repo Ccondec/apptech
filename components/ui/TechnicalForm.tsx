@@ -168,7 +168,7 @@ const REPORT_TYPES: { id: ReportType; label: string; icon: string }[] = [
   { id: 'planta',       label: 'Plantas Eléctricas',   icon: '⚡' },
   { id: 'fotovoltaico', label: 'Sistema Fotovoltaico', icon: '☀️' },
   { id: 'impresora',        label: 'Impresoras',           icon: '🖨️' },
-  { id: 'apantallamiento', label: 'Apantallamiento',      icon: '⛈️' },
+  { id: 'apantallamiento', label: 'Apant. / Tierra',      icon: '⛈️' },
   { id: 'otros',           label: 'Otros Informes',       icon: '📋' },
 ];
 
@@ -1542,7 +1542,7 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken }: { tec
       planta:       'Planta Eléctrica',
       fotovoltaico: 'Sistema Fotovoltaico',
       impresora:        'Mantenimiento de Impresoras',
-      apantallamiento:  'Sistema de Apantallamiento',
+      apantallamiento:  formData.apanSubtipo === 'puesta_tierra' ? 'Sistema de Puesta a Tierra' : 'Sistema de Apantallamiento',
       otros:            'Otros Servicios',
     }
     const tipoInforme = tipoLabel[formData.reportType as string] ?? 'UPS / Baterías'
@@ -2677,7 +2677,24 @@ yPosition += 8;
       }
 
       // Datos + Medición + Resultado
-      const apanFields: [string, string][] = [
+      const esPuestaTierra = formData.apanSubtipo === 'puesta_tierra'
+      const apanFields: [string, string][] = esPuestaTierra ? [
+        ['Tipo de electrodo:', String(formData.ptElectrodo || 'N/A')],
+        ['Material conductor:', String(formData.ptMaterial || 'N/A')],
+        ['Seccion conductor (mm2):', formData.ptSeccion ? String(formData.ptSeccion) : 'N/A'],
+        ['Ano de instalacion:', formData.apanAnoInstalacion ? String(formData.apanAnoInstalacion) : 'N/A'],
+        ['Resistencia de tierra (Ohm):', formData.apanResistencia ? String(formData.apanResistencia) : 'N/A'],
+        ['Valor maximo permitido:', String(formData.apanResistenciaMax || 'N/A')],
+        ['Metodo de medicion:', String(formData.apanMetodo || 'N/A')],
+        ['Instrumento:', String(formData.apanInstrumento || 'N/A')],
+        ['Temperatura (°C):', formData.apanTemperatura ? String(formData.apanTemperatura) : 'N/A'],
+        ['Humedad relativa (%):', formData.apanHumedad ? String(formData.apanHumedad) : 'N/A'],
+        ['Estado de electrodos:', String(formData.ptEstadoElectrodo || 'N/A')],
+        ['Estado conductores:', String(formData.ptEstadoConductor || 'N/A')],
+        ['Equipotencializacion:', String(formData.ptEquipotencial || 'N/A')],
+        ['Resultado general:', String(formData.apanResultado || 'N/A')],
+        ['Normativa aplicada:', String(formData.apanNorma || 'N/A')],
+      ] : [
         ['Tipo de sistema:', String(formData.apanTipo || 'N/A')],
         ['Nivel de proteccion:', String(formData.apanNivel || 'N/A')],
         ['Altura punta captadora (m):', formData.apanAltura ? String(formData.apanAltura) : 'N/A'],
@@ -2697,7 +2714,7 @@ yPosition += 8;
       addSectionDivider()
       checkPageBreak(15)
       pdf.setFontSize(12); pdf.setFont('helvetica', 'bold')
-      pdf.text('SISTEMA DE APANTALLAMIENTO', margin, yPosition)
+      pdf.text(esPuestaTierra ? 'SISTEMA DE PUESTA A TIERRA' : 'SISTEMA DE APANTALLAMIENTO', margin, yPosition)
       yPosition += 8
       const apFCols = 3; const apFColW = contentWidth / apFCols
       apanFields.forEach(([label, value], idx) => {

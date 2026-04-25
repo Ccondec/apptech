@@ -34,7 +34,7 @@ export default function ImpresoraParams({ formData, onChange, showOnly }: Props)
     const stored = formData.impresoraChecklist
     if (stored && stored.length > 0) return stored
     return DEFAULT_CHECKLIST.map((c, i) => ({ ...c, id: i + 1 }))
-  }, [])
+  }, [formData.impresoraChecklist])
 
   // Sincronizar checklist inicial al montar
   React.useEffect(() => {
@@ -68,19 +68,21 @@ export default function ImpresoraParams({ formData, onChange, showOnly }: Props)
               </div>
             </div>
           )}
-          {checks.map((c: CheckRow) => (
-            <label key={c.id} className="flex items-center gap-3 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={c.checked}
-                onChange={e => updateCheck(c.id, 'checked', e.target.checked)}
-                className="h-4 w-4 text-green-600 rounded border-gray-300 flex-shrink-0"
-              />
-              <span className={`text-sm ${c.checked ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                {c.text}
-              </span>
-            </label>
-          ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {checks.map((c: CheckRow) => (
+              <label key={c.id} className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={c.checked}
+                  onChange={e => updateCheck(c.id, 'checked', e.target.checked)}
+                  className="h-4 w-4 text-green-600 rounded border-gray-300 flex-shrink-0"
+                />
+                <span className={`text-sm ${c.checked ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                  {c.text}
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
       </CollapsibleSection>}
 
