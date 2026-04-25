@@ -1458,9 +1458,10 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken, asignac
     let qrCanvas: HTMLCanvasElement | null = null
     try {
       const QRCode = await import('qrcode')
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tech.snelapp.com'
       const qrText = qrCodeId
-        ? `https://snelapp.com/equipo/${encodeURIComponent(qrCodeId)}`
-        : `https://snelapp.com/informe?n=${repNum}&fecha=${encodeURIComponent(fecha)}&cliente=${encodeURIComponent(client)}`
+        ? `${siteUrl}/equipo/${encodeURIComponent(qrCodeId)}`
+        : `${siteUrl}/informe?n=${repNum}&fecha=${encodeURIComponent(fecha)}&cliente=${encodeURIComponent(client)}`
       const canvas = document.createElement('canvas')
       await QRCode.toCanvas(canvas, qrText, {
         width: 200, margin: 2, errorCorrectionLevel: 'M',
@@ -3311,7 +3312,7 @@ yPosition += 8;
       pdf.save(filename);
 
       const qr = String(formData.qrCode ?? '').trim();
-      const link = qr ? `\n🔗 snelapp.com/equipo/${qr}` : '';
+      const link = qr ? `\n🔗 tech.snelapp.com/equipo/${qr}` : '';
       const text =
         `*Reporte Técnico — ${companyInfo.name}*\n` +
         `📋 Cliente: ${formData.clientCompany ?? ''}\n` +
