@@ -130,7 +130,7 @@ export async function getUsuarioActual(): Promise<(Usuario & { empresa: Empresa 
     .from('usuarios')
     .select('*, empresa:empresas(*)')
     .eq('id', session.user.id)
-    .single()
+    .maybeSingle()
 
   return data ?? null
 }

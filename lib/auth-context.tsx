@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .from('usuarios')
       .select('*, empresa:empresas(*)')
       .eq('id', s.user.id)
-      .single()
+      .maybeSingle()
 
     if (!error && data) {
       lastUserIdRef.current = s.user.id
