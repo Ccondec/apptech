@@ -3347,7 +3347,7 @@ yPosition += 8;
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6" onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') e.preventDefault() }}>
             {/* Selector tipo de reporte */}
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {REPORT_TYPES.map(({ id, label, icon }) => {
