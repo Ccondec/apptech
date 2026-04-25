@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await admin
     .from('usuarios')
-    .select('id, nombre, rol, activo, email, client_company')
+    .select('id, nombre, rol, activo, client_company')
     .eq('empresa_id', auth.empresaId)
     .order('nombre', { ascending: true })
 
