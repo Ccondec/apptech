@@ -412,7 +412,7 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [processingPhoto, setProcessingPhoto] = useState(false);
 
-  // Lee orientación EXIF del JPEG (primeros 64KB del archivo)
+  // Lee orientación EXIF del JPEG (primeros 64KB)
   const getExifOrientation = useCallback((file: File): Promise<number> => {
     return new Promise(resolve => {
       const reader = new FileReader();
@@ -425,16 +425,17 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
             const marker = view.getUint16(offset, false);
             offset += 2;
             if (marker === 0xFFE1) {
-              const segLen = view.getUint16(offset, false);
+              // APP1: [2 len][6 "Exif\0\0"][TIFF...]
               if (view.getUint32(offset + 2, false) !== 0x45786966) { resolve(1); return; }
-              const little = view.getUint16(offset + 8, false) === 0x4949;
-              const ifdOffset = offset + 10 + view.getUint32(offset + 14, little);
-              const tags = view.getUint16(ifdOffset, little);
+              const tiff = offset + 8; // inicio del bloque TIFF
+              const little = view.getUint16(tiff, false) === 0x4949;
+              const ifd0 = tiff + view.getUint32(tiff + 4, little);
+              const tags = view.getUint16(ifd0, little);
               for (let i = 0; i < tags; i++) {
-                const tagOffset = ifdOffset + 2 + i * 12;
-                if (tagOffset + 12 > view.byteLength) break;
-                if (view.getUint16(tagOffset, little) === 0x0112) {
-                  resolve(view.getUint16(tagOffset + 8, little));
+                const t = ifd0 + 2 + i * 12;
+                if (t + 12 > view.byteLength) break;
+                if (view.getUint16(t, little) === 0x0112) {
+                  resolve(view.getUint16(t + 8, little));
                   return;
                 }
               }
@@ -450,37 +451,21 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
     });
   }, []);
 
-  // Dibuja img en canvas con orientación EXIF corregida, escalada al máximo MAX px
-  // Usa dos canvases: primero corrige orientación a tamaño natural, luego escala
+  // Un solo canvas: aplica escala + orientación EXIF en un paso para no crear
+  // canvas de tamaño natural (evita OOM en iOS con fotos de 12MP+)
   const drawWithOrientation = useCallback((img: HTMLImageElement, orientation: number): string => {
     const sw = img.naturalWidth  || img.width;
     const sh = img.naturalHeight || img.height;
     if (!sw || !sh) throw new Error('imagen vacía');
 
-    // Paso 1: canvas temporal con corrección de orientación a tamaño natural
     const swap = orientation >= 5 && orientation <= 8;
-    const tmp = document.createElement('canvas');
-    tmp.width  = swap ? sh : sw;
-    tmp.height = swap ? sw : sh;
-    const tc = tmp.getContext('2d')!;
-    switch (orientation) {
-      case 2: tc.transform(-1,  0,  0,  1, sw,  0); break;
-      case 3: tc.transform(-1,  0,  0, -1, sw, sh); break;
-      case 4: tc.transform( 1,  0,  0, -1,  0, sh); break;
-      case 5: tc.transform( 0,  1,  1,  0,  0,  0); break;
-      case 6: tc.transform( 0,  1, -1,  0, sh,  0); break;
-      case 7: tc.transform( 0, -1, -1,  0, sh, sw); break;
-      case 8: tc.transform( 0, -1,  1,  0,  0, sw); break;
-    }
-    tc.drawImage(img, 0, 0);
+    const outW = swap ? sh : sw;
+    const outH = swap ? sw : sh;
 
-    // Paso 2: escalar al tamaño final (máx 1600px en el lado mayor)
     const MAX = 1600;
-    const outW = tmp.width;
-    const outH = tmp.height;
-    const scale = Math.min(MAX / outW, MAX / outH, 1);
-    const cw = Math.max(1, Math.round(outW * scale));
-    const ch = Math.max(1, Math.round(outH * scale));
+    const s = Math.min(MAX / outW, MAX / outH, 1); // factor de escala
+    const cw = Math.max(1, Math.round(outW * s));
+    const ch = Math.max(1, Math.round(outH * s));
 
     const canvas = document.createElement('canvas');
     canvas.width  = cw;
@@ -488,7 +473,20 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
     const ctx = canvas.getContext('2d')!;
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, cw, ch);
-    ctx.drawImage(tmp, 0, 0, cw, ch);
+
+    // La transformación combina la escala s con la corrección de orientación.
+    // Dibujamos a tamaño natural (0,0) para que la matriz haga el escalado.
+    switch (orientation) {
+      case 1: ctx.drawImage(img, 0, 0, cw, ch);                      break;
+      case 2: ctx.transform(-s,  0,  0,  s, cw,   0); ctx.drawImage(img, 0, 0); break;
+      case 3: ctx.transform(-s,  0,  0, -s, cw,  ch); ctx.drawImage(img, 0, 0); break;
+      case 4: ctx.transform( s,  0,  0, -s,  0,  ch); ctx.drawImage(img, 0, 0); break;
+      case 5: ctx.transform( 0,  s,  s,  0,  0,   0); ctx.drawImage(img, 0, 0); break;
+      case 6: ctx.transform( 0,  s, -s,  0, sh*s,  0); ctx.drawImage(img, 0, 0); break;
+      case 7: ctx.transform( 0, -s, -s,  0, sh*s, sw*s); ctx.drawImage(img, 0, 0); break;
+      case 8: ctx.transform( 0, -s,  s,  0,  0,  sw*s); ctx.drawImage(img, 0, 0); break;
+      default: ctx.drawImage(img, 0, 0, cw, ch);                     break;
+    }
 
     return canvas.toDataURL('image/jpeg', 0.72);
   }, []);
