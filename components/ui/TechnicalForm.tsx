@@ -412,19 +412,77 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [processingPhoto, setProcessingPhoto] = useState(false);
 
-  const drawBitmapToDataUrl = useCallback((source: HTMLImageElement | ImageBitmap, srcW: number, srcH: number): string => {
-    const MAX_W = 1200, MAX_H = 900;
-    const ratio = Math.min(MAX_W / srcW, MAX_H / srcH, 1);
+  // Lee orientación EXIF del archivo (bytes) para corregir fotos de iPhone/Android
+  const getExifOrientation = useCallback((file: File): Promise<number> => {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const view = new DataView(e.target!.result as ArrayBuffer);
+          if (view.getUint16(0, false) !== 0xFFD8) { resolve(1); return; }
+          let offset = 2;
+          while (offset < view.byteLength) {
+            const marker = view.getUint16(offset, false);
+            offset += 2;
+            if (marker === 0xFFE1) {
+              if (view.getUint32(offset += 2, false) !== 0x45786966) { resolve(1); return; }
+              const little = view.getUint16(offset += 6, false) === 0x4949;
+              offset += view.getUint32(offset + 4, little);
+              const tags = view.getUint16(offset, little);
+              offset += 2;
+              for (let i = 0; i < tags; i++) {
+                if (view.getUint16(offset + i * 12, little) === 0x0112) {
+                  resolve(view.getUint16(offset + i * 12 + 8, little));
+                  return;
+                }
+              }
+            } else if ((marker & 0xFF00) !== 0xFF00) break;
+            else offset += view.getUint16(offset, false);
+          }
+        } catch { /* ignorar */ }
+        resolve(1);
+      };
+      reader.onerror = () => resolve(1);
+      reader.readAsArrayBuffer(file.slice(0, 64 * 1024));
+    });
+  }, []);
+
+  const drawWithOrientation = useCallback((img: HTMLImageElement, orientation: number): string => {
+    const MAX = 1600;
+    const sw = img.naturalWidth  || img.width;
+    const sh = img.naturalHeight || img.height;
+    if (!sw || !sh) throw new Error('empty image');
+
+    // Para orientaciones 5-8 los ejes se intercambian
+    const rotated = orientation >= 5 && orientation <= 8;
+    const srcW = rotated ? sh : sw;
+    const srcH = rotated ? sw : sh;
+
+    const ratio = Math.min(MAX / srcW, MAX / srcH, 1);
     const w = Math.max(1, Math.round(srcW * ratio));
     const h = Math.max(1, Math.round(srcH * ratio));
+
     const canvas = document.createElement('canvas');
     canvas.width  = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d')!;
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(source as CanvasImageSource, 0, 0, w, h);
-    return canvas.toDataURL('image/jpeg', 0.70);
+
+    ctx.save();
+    switch (orientation) {
+      case 2: ctx.transform(-1,  0,  0,  1, w, 0); break;
+      case 3: ctx.transform(-1,  0,  0, -1, w, h); break;
+      case 4: ctx.transform( 1,  0,  0, -1, 0, h); break;
+      case 5: ctx.transform( 0,  1,  1,  0, 0, 0); break;
+      case 6: ctx.transform( 0,  1, -1,  0, h, 0); break;
+      case 7: ctx.transform( 0, -1, -1,  0, h, w); break;
+      case 8: ctx.transform( 0, -1,  1,  0, 0, w); break;
+    }
+    ctx.drawImage(img, 0, 0, rotated ? h * (sw / sh) : w, rotated ? w * (sh / sw) : h);
+    ctx.restore();
+
+    return canvas.toDataURL('image/jpeg', 0.72);
   }, []);
 
   const addPhotoUrl = useCallback((url: string) => {
@@ -434,7 +492,7 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
       savePhotosIDB(updated.photos).catch(() => {});
       return updated;
     });
-  }, [setFormData, drawBitmapToDataUrl]);
+  }, [setFormData]);
 
   const processAndAddPhoto = useCallback((file: File) => {
     if (file.size > 30 * 1024 * 1024) {
@@ -443,50 +501,30 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
     }
     setProcessingPhoto(true);
 
-    // Intentar createImageBitmap con corrección EXIF automática (Chrome/Safari 15+)
-    // Esto resuelve fotos de cámara giradas por datos EXIF de orientación
-    const tryBitmap = () => createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions)
-      .then(bitmap => {
-        setTimeout(() => {
-          try {
-            const url = drawBitmapToDataUrl(bitmap as unknown as HTMLImageElement, bitmap.width, bitmap.height);
-            bitmap.close();
-            addPhotoUrl(url);
-          } catch { tryFallback() }
-          finally { setProcessingPhoto(false) }
-        }, 30);
-      })
-      .catch(() => tryFallback());
-
-    // Fallback: FileReader + Image (máxima compatibilidad, sin corrección EXIF)
-    const tryFallback = () => {
+    // Leer EXIF primero, luego cargar imagen y dibujar con corrección de orientación
+    getExifOrientation(file).then(orientation => {
       const reader = new FileReader();
       reader.onload = ev => {
         const dataUrl = ev.target?.result as string;
         if (!dataUrl) { setProcessingPhoto(false); return; }
         const img = new Image();
         img.onload = () => {
-          setTimeout(() => {
-            try {
-              if (!img.width || !img.height) throw new Error('empty');
-              const url = drawBitmapToDataUrl(img, img.width, img.height);
-              addPhotoUrl(url);
-            } catch {
-              alert('Error al procesar la imagen. Intenta con otra foto.');
-            } finally {
-              setProcessingPhoto(false);
-            }
-          }, 30);
+          try {
+            const url = drawWithOrientation(img, orientation);
+            addPhotoUrl(url);
+          } catch {
+            alert('Error al procesar la imagen. Intenta con otra foto.');
+          } finally {
+            setProcessingPhoto(false);
+          }
         };
         img.onerror = () => { setProcessingPhoto(false); alert('No se pudo cargar la imagen.'); };
         img.src = dataUrl;
       };
       reader.onerror = () => { setProcessingPhoto(false); alert('No se pudo leer el archivo.'); };
       reader.readAsDataURL(file);
-    };
-
-    tryBitmap();
-  }, [drawBitmapToDataUrl, addPhotoUrl]);
+    });
+  }, [getExifOrientation, drawWithOrientation, addPhotoUrl]);
 
   const handleCamera  = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (file) processAndAddPhoto(file);
