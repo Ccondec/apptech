@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button'
 import { LogOut, User, ShieldCheck, Zap } from 'lucide-react'
 
 export default function HomePage() {
-  const { user, loading, mustChangePassword, signOut } = useAuth()
+  const { session, user, loading, mustChangePassword, signOut } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && !user) router.push('/login')
+    if (!loading && !session) router.push('/login')
     if (!loading && user && mustChangePassword) router.push('/cambiar-password')
     if (!loading && user && user.rol === 'cliente') router.push('/portal')
-  }, [loading, user, mustChangePassword, router])
+  }, [loading, session, user, mustChangePassword, router])
 
   if (loading) {
     return (
@@ -27,7 +27,20 @@ export default function HomePage() {
     )
   }
 
-  if (!user) return null
+  if (!user) {
+    if (session) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+          <div className="text-center space-y-3">
+            <p className="text-gray-700 font-medium">Tu cuenta no tiene perfil asignado.</p>
+            <p className="text-gray-500 text-sm">Contacta al administrador para que configure tu usuario.</p>
+            <button onClick={signOut} className="mt-2 text-sm text-red-500 hover:underline">Cerrar sesión</button>
+          </div>
+        </div>
+      )
+    }
+    return null
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
