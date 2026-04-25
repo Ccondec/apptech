@@ -1,14 +1,18 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import TechnicalForm from '@/components/ui/TechnicalForm'
 import { Button } from '@/components/ui/button'
 import { LogOut, User, ShieldCheck, Zap } from 'lucide-react'
+import { useInactivity } from '@/lib/use-inactivity'
 
 export default function HomePage() {
   const { session, user, loading, mustChangePassword, signOut } = useAuth()
   const router = useRouter()
+
+  const handleInactivity = useCallback(async () => { await signOut() }, [signOut])
+  useInactivity(handleInactivity, 30)
 
   useEffect(() => {
     if (!loading && !session) router.push('/login')

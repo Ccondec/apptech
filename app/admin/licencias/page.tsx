@@ -1,10 +1,11 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Key, Copy, CheckCircle, Plus, Building2, Calendar, ToggleLeft, ToggleRight, RefreshCw, Lock } from 'lucide-react'
+import { Key, Copy, CheckCircle, Plus, Building2, Calendar, ToggleLeft, ToggleRight, RefreshCw, Lock, LogOut } from 'lucide-react'
+import { useInactivity } from '@/lib/use-inactivity'
 
 interface Empresa {
   id: string
@@ -77,6 +78,14 @@ export default function LicenciasPage() {
     setEmpresas(data ?? [])
     setLoading(false)
   }
+
+  const cerrarSesion = useCallback(() => {
+    sessionStorage.removeItem(SESSION_KEY)
+    setAuthed(false)
+    setMasterInput('')
+  }, [])
+
+  useInactivity(cerrarSesion, 15)
 
   useEffect(() => { if (authed) cargar() }, [authed])
 
@@ -164,14 +173,24 @@ export default function LicenciasPage() {
     <div className="min-h-screen bg-gray-50 px-4 py-10">
       <div className="max-w-3xl mx-auto space-y-6">
 
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
-            <Key className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
+              <Key className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Gestión de Licencias</h1>
+              <p className="text-sm text-gray-400">Ion Energy S.A.S — Panel interno</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Gestión de Licencias</h1>
-            <p className="text-sm text-gray-400">Ion Energy S.A.S — Panel interno</p>
-          </div>
+          <button
+            onClick={cerrarSesion}
+            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-500 transition-colors"
+            title="Cerrar sesión"
+          >
+            <LogOut className="w-4 h-4" />
+            Salir
+          </button>
         </div>
 
         {/* Crear empresa */}
