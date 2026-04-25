@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Construir el from con el nombre de la empresa pero usando el dominio verificado
-    const verifiedFrom = process.env.RESEND_FROM ?? 'comercial@ionenergy.com.co'
+    const verifiedFrom = process.env.RESEND_FROM ?? 'noreply@snelapp.com'
     const fromAddress = companyName
       ? `${companyName} <${verifiedFrom}>`
       : `Notificaciones <${verifiedFrom}>`
