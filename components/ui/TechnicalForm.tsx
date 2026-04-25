@@ -412,58 +412,81 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [processingPhoto, setProcessingPhoto] = useState(false);
 
+  const drawBitmapToDataUrl = useCallback((source: HTMLImageElement | ImageBitmap, srcW: number, srcH: number): string => {
+    const MAX_W = 1200, MAX_H = 900;
+    const ratio = Math.min(MAX_W / srcW, MAX_H / srcH, 1);
+    const w = Math.max(1, Math.round(srcW * ratio));
+    const h = Math.max(1, Math.round(srcH * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width  = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(source as CanvasImageSource, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', 0.70);
+  }, []);
+
+  const addPhotoUrl = useCallback((url: string) => {
+    const newPhoto: Photo = { id: Date.now() + Math.random(), url, description: '' };
+    setFormData((prev: Record<string, any>) => {
+      const updated = { ...prev, photos: [...(prev.photos || []), newPhoto] };
+      savePhotosIDB(updated.photos).catch(() => {});
+      return updated;
+    });
+  }, [setFormData, drawBitmapToDataUrl]);
+
   const processAndAddPhoto = useCallback((file: File) => {
     if (file.size > 30 * 1024 * 1024) {
       alert('El archivo es muy grande. Máximo 30MB.');
       return;
     }
-
     setProcessingPhoto(true);
 
-    // createObjectURL es mucho más rápido que FileReader en iOS Safari
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
+    // Intentar createImageBitmap con corrección EXIF automática (Chrome/Safari 15+)
+    // Esto resuelve fotos de cámara giradas por datos EXIF de orientación
+    const tryBitmap = () => createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions)
+      .then(bitmap => {
+        setTimeout(() => {
+          try {
+            const url = drawBitmapToDataUrl(bitmap as unknown as HTMLImageElement, bitmap.width, bitmap.height);
+            bitmap.close();
+            addPhotoUrl(url);
+          } catch { tryFallback() }
+          finally { setProcessingPhoto(false) }
+        }, 30);
+      })
+      .catch(() => tryFallback());
 
-    img.onload = () => {
-      // Ceder el hilo al navegador antes de las operaciones pesadas de canvas
-      // Esto evita el "cuelga" en iPhones con fotos de alta resolución
-      setTimeout(() => {
-        try {
-          const MAX_W = 1200, MAX_H = 900;
-          const ratio = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
-          const w = Math.round(img.width  * ratio);
-          const h = Math.round(img.height * ratio);
-          const canvas = document.createElement('canvas');
-          canvas.width  = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d')!;
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, w, h);
-          ctx.drawImage(img, 0, 0, w, h);
-          URL.revokeObjectURL(objectUrl);           // liberar memoria
-          const url = canvas.toDataURL('image/jpeg', 0.70);
-          const newPhoto: Photo = { id: Date.now() + Math.random(), url, description: '' };
-          setFormData((prev: Record<string, any>) => {
-            const updated = { ...prev, photos: [...(prev.photos || []), newPhoto] };
-            savePhotosIDB(updated.photos).catch(() => {});
-            return updated;
-          });
-        } catch {
-          alert('Error al procesar la imagen. Intenta con otra foto.');
-        } finally {
-          setProcessingPhoto(false);
-        }
-      }, 30);
+    // Fallback: FileReader + Image (máxima compatibilidad, sin corrección EXIF)
+    const tryFallback = () => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const dataUrl = ev.target?.result as string;
+        if (!dataUrl) { setProcessingPhoto(false); return; }
+        const img = new Image();
+        img.onload = () => {
+          setTimeout(() => {
+            try {
+              if (!img.width || !img.height) throw new Error('empty');
+              const url = drawBitmapToDataUrl(img, img.width, img.height);
+              addPhotoUrl(url);
+            } catch {
+              alert('Error al procesar la imagen. Intenta con otra foto.');
+            } finally {
+              setProcessingPhoto(false);
+            }
+          }, 30);
+        };
+        img.onerror = () => { setProcessingPhoto(false); alert('No se pudo cargar la imagen.'); };
+        img.src = dataUrl;
+      };
+      reader.onerror = () => { setProcessingPhoto(false); alert('No se pudo leer el archivo.'); };
+      reader.readAsDataURL(file);
     };
 
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      setProcessingPhoto(false);
-      alert('No se pudo cargar la imagen.');
-    };
-
-    img.src = objectUrl;
-  }, [setFormData]);
+    tryBitmap();
+  }, [drawBitmapToDataUrl, addPhotoUrl]);
 
   const handleCamera  = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (file) processAndAddPhoto(file);
