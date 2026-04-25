@@ -412,7 +412,7 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [processingPhoto, setProcessingPhoto] = useState(false);
 
-  // Lee orientación EXIF del archivo (bytes) para corregir fotos de iPhone/Android
+  // Lee orientación EXIF del JPEG (primeros 64KB del archivo)
   const getExifOrientation = useCallback((file: File): Promise<number> => {
     return new Promise(resolve => {
       const reader = new FileReader();
@@ -421,21 +421,24 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
           const view = new DataView(e.target!.result as ArrayBuffer);
           if (view.getUint16(0, false) !== 0xFFD8) { resolve(1); return; }
           let offset = 2;
-          while (offset < view.byteLength) {
+          while (offset + 4 < view.byteLength) {
             const marker = view.getUint16(offset, false);
             offset += 2;
             if (marker === 0xFFE1) {
-              if (view.getUint32(offset += 2, false) !== 0x45786966) { resolve(1); return; }
-              const little = view.getUint16(offset += 6, false) === 0x4949;
-              offset += view.getUint32(offset + 4, little);
-              const tags = view.getUint16(offset, little);
-              offset += 2;
+              const segLen = view.getUint16(offset, false);
+              if (view.getUint32(offset + 2, false) !== 0x45786966) { resolve(1); return; }
+              const little = view.getUint16(offset + 8, false) === 0x4949;
+              const ifdOffset = offset + 10 + view.getUint32(offset + 14, little);
+              const tags = view.getUint16(ifdOffset, little);
               for (let i = 0; i < tags; i++) {
-                if (view.getUint16(offset + i * 12, little) === 0x0112) {
-                  resolve(view.getUint16(offset + i * 12 + 8, little));
+                const tagOffset = ifdOffset + 2 + i * 12;
+                if (tagOffset + 12 > view.byteLength) break;
+                if (view.getUint16(tagOffset, little) === 0x0112) {
+                  resolve(view.getUint16(tagOffset + 8, little));
                   return;
                 }
               }
+              resolve(1); return;
             } else if ((marker & 0xFF00) !== 0xFF00) break;
             else offset += view.getUint16(offset, false);
           }
@@ -447,40 +450,45 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
     });
   }, []);
 
+  // Dibuja img en canvas con orientación EXIF corregida, escalada al máximo MAX px
+  // Usa dos canvases: primero corrige orientación a tamaño natural, luego escala
   const drawWithOrientation = useCallback((img: HTMLImageElement, orientation: number): string => {
-    const MAX = 1600;
     const sw = img.naturalWidth  || img.width;
     const sh = img.naturalHeight || img.height;
-    if (!sw || !sh) throw new Error('empty image');
+    if (!sw || !sh) throw new Error('imagen vacía');
 
-    // Para orientaciones 5-8 los ejes se intercambian
-    const rotated = orientation >= 5 && orientation <= 8;
-    const srcW = rotated ? sh : sw;
-    const srcH = rotated ? sw : sh;
+    // Paso 1: canvas temporal con corrección de orientación a tamaño natural
+    const swap = orientation >= 5 && orientation <= 8;
+    const tmp = document.createElement('canvas');
+    tmp.width  = swap ? sh : sw;
+    tmp.height = swap ? sw : sh;
+    const tc = tmp.getContext('2d')!;
+    switch (orientation) {
+      case 2: tc.transform(-1,  0,  0,  1, sw,  0); break;
+      case 3: tc.transform(-1,  0,  0, -1, sw, sh); break;
+      case 4: tc.transform( 1,  0,  0, -1,  0, sh); break;
+      case 5: tc.transform( 0,  1,  1,  0,  0,  0); break;
+      case 6: tc.transform( 0,  1, -1,  0, sh,  0); break;
+      case 7: tc.transform( 0, -1, -1,  0, sh, sw); break;
+      case 8: tc.transform( 0, -1,  1,  0,  0, sw); break;
+    }
+    tc.drawImage(img, 0, 0);
 
-    const ratio = Math.min(MAX / srcW, MAX / srcH, 1);
-    const w = Math.max(1, Math.round(srcW * ratio));
-    const h = Math.max(1, Math.round(srcH * ratio));
+    // Paso 2: escalar al tamaño final (máx 1600px en el lado mayor)
+    const MAX = 1600;
+    const outW = tmp.width;
+    const outH = tmp.height;
+    const scale = Math.min(MAX / outW, MAX / outH, 1);
+    const cw = Math.max(1, Math.round(outW * scale));
+    const ch = Math.max(1, Math.round(outH * scale));
 
     const canvas = document.createElement('canvas');
-    canvas.width  = w;
-    canvas.height = h;
+    canvas.width  = cw;
+    canvas.height = ch;
     const ctx = canvas.getContext('2d')!;
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.save();
-    switch (orientation) {
-      case 2: ctx.transform(-1,  0,  0,  1, w, 0); break;
-      case 3: ctx.transform(-1,  0,  0, -1, w, h); break;
-      case 4: ctx.transform( 1,  0,  0, -1, 0, h); break;
-      case 5: ctx.transform( 0,  1,  1,  0, 0, 0); break;
-      case 6: ctx.transform( 0,  1, -1,  0, h, 0); break;
-      case 7: ctx.transform( 0, -1, -1,  0, h, w); break;
-      case 8: ctx.transform( 0, -1,  1,  0, 0, w); break;
-    }
-    ctx.drawImage(img, 0, 0, rotated ? h * (sw / sh) : w, rotated ? w * (sh / sw) : h);
-    ctx.restore();
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(tmp, 0, 0, cw, ch);
 
     return canvas.toDataURL('image/jpeg', 0.72);
   }, []);
@@ -489,7 +497,8 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
     const newPhoto: Photo = { id: Date.now() + Math.random(), url, description: '' };
     setFormData((prev: Record<string, any>) => {
       const updated = { ...prev, photos: [...(prev.photos || []), newPhoto] };
-      savePhotosIDB(updated.photos).catch(() => {});
+      // Guardar en IDB fuera del updater para no generar efecto secundario en React
+      Promise.resolve().then(() => savePhotosIDB(updated.photos).catch(console.warn));
       return updated;
     });
   }, [setFormData]);
@@ -499,9 +508,17 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
       alert('El archivo es muy grande. Máximo 30MB.');
       return;
     }
+
+    // Rechazar HEIC/HEIF — el canvas no puede decodificarlos
+    const name = file.name?.toLowerCase() ?? '';
+    const type = file.type?.toLowerCase() ?? '';
+    if (type.includes('heic') || type.includes('heif') || name.endsWith('.heic') || name.endsWith('.heif')) {
+      alert('Formato HEIC no soportado. En Ajustes > Cámara > Formatos elige "Más compatible" para usar JPEG.');
+      return;
+    }
+
     setProcessingPhoto(true);
 
-    // Leer EXIF primero, luego cargar imagen y dibujar con corrección de orientación
     getExifOrientation(file).then(orientation => {
       const reader = new FileReader();
       reader.onload = ev => {
@@ -512,16 +529,25 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
           try {
             const url = drawWithOrientation(img, orientation);
             addPhotoUrl(url);
-          } catch {
+          } catch (err) {
+            console.error('drawWithOrientation error:', err);
             alert('Error al procesar la imagen. Intenta con otra foto.');
           } finally {
             setProcessingPhoto(false);
           }
         };
-        img.onerror = () => { setProcessingPhoto(false); alert('No se pudo cargar la imagen.'); };
+        img.onerror = (err) => {
+          console.error('img.onerror:', err);
+          setProcessingPhoto(false);
+          alert('No se pudo cargar la imagen. Si usas iPhone, activa "Más compatible" en Ajustes > Cámara > Formatos.');
+        };
         img.src = dataUrl;
       };
-      reader.onerror = () => { setProcessingPhoto(false); alert('No se pudo leer el archivo.'); };
+      reader.onerror = (err) => {
+        console.error('FileReader error:', err);
+        setProcessingPhoto(false);
+        alert('No se pudo leer el archivo.');
+      };
       reader.readAsDataURL(file);
     });
   }, [getExifOrientation, drawWithOrientation, addPhotoUrl]);
