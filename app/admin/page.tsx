@@ -98,7 +98,7 @@ export default function AdminPage() {
       if (res.ok) {
         setUsuarios(json.usuarios ?? [])
       } else {
-        console.error('cargarUsuarios:', json.error)
+        console.error('cargarUsuarios error:', res.status, json)
       }
     } catch (err) {
       console.error('cargarUsuarios:', err)

@@ -11,10 +11,10 @@ export async function GET(req: NextRequest) {
   // Validar que el solicitante está autenticado
   const auth = await getAuthEmpresa(req)
   if (!auth) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    console.error('[listar-usuarios] Auth fallida — header:', req.headers.get('authorization')?.slice(0, 30))
+    return NextResponse.json({ error: 'No autorizado', hint: 'Token inválido o sesión expirada' }, { status: 401 })
   }
 
-  // Usar el empresa_id del JWT (no el del query param) para evitar acceso cruzado
   const admin = createClient('https://deouxnumhspmollumsoz.supabase.co', SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
     .order('nombre', { ascending: true })
 
   if (error) {
+    console.error('[listar-usuarios] DB error:', error)
     return NextResponse.json({ error: error.message }, { status: 400 })
   }
 
