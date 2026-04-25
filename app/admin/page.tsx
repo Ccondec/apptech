@@ -189,8 +189,10 @@ export default function AdminPage() {
   }
 
   const toggleActivo = async (u: Usuario) => {
-    await supabase.from('usuarios').update({ activo: !u.activo }).eq('id', u.id)
-    cargarUsuarios()
+    const nuevoEstado = !u.activo
+    setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, activo: nuevoEstado } : x))
+    const { error } = await supabase.from('usuarios').update({ activo: nuevoEstado }).eq('id', u.id)
+    if (error) setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, activo: u.activo } : x))
   }
 
   const eliminarUsuario = async (u: Usuario) => {
@@ -675,26 +677,27 @@ export default function AdminPage() {
                     <p className="text-xs text-gray-400 capitalize">{u.rol}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${u.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                      {u.activo ? 'Activo' : 'Inactivo'}
-                    </span>
+                    {u.id !== user.id ? (
+                      <button
+                        onClick={() => toggleActivo(u)}
+                        title={u.activo ? 'Desactivar' : 'Activar'}
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${u.activo ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-600' : 'bg-red-100 text-red-600 hover:bg-green-100 hover:text-green-700'}`}
+                      >
+                        {u.activo ? 'Activo' : 'Inactivo'}
+                      </button>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">
+                        Activo
+                      </span>
+                    )}
                     {u.id !== user.id && (
-                      <>
-                        <button
-                          onClick={() => toggleActivo(u)}
-                          className="text-gray-400 hover:text-gray-600"
-                          title={u.activo ? 'Desactivar' : 'Activar'}
-                        >
-                          {u.activo ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                        </button>
-                        <button
-                          onClick={() => eliminarUsuario(u)}
-                          className="text-gray-300 hover:text-red-500"
-                          title="Eliminar usuario"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
+                      <button
+                        onClick={() => eliminarUsuario(u)}
+                        className="text-gray-300 hover:text-red-500"
+                        title="Eliminar usuario"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
                 </div>
