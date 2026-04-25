@@ -6,7 +6,7 @@ import { supabase, getSession, Usuario, importarClientes, importarEquipos, setCo
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup, ClipboardList, SendHorizonal } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup, ClipboardList, SendHorizonal, Trash2 } from 'lucide-react'
 import { crearFormToken, listarFormTokens, desactivarFormToken, FormToken, crearAsignacion, listarAsignaciones, cancelarAsignacion, Asignacion } from '@/lib/supabase'
 
 export default function AdminPage() {
@@ -190,6 +190,17 @@ export default function AdminPage() {
 
   const toggleActivo = async (u: Usuario) => {
     await supabase.from('usuarios').update({ activo: !u.activo }).eq('id', u.id)
+    cargarUsuarios()
+  }
+
+  const eliminarUsuario = async (u: Usuario) => {
+    if (!confirm(`¿Eliminar a "${u.nombre}"? Esta acción no se puede deshacer.`)) return
+    const session = await getSession()
+    await fetch('/api/eliminar-usuario', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ userId: u.id }),
+    })
     cargarUsuarios()
   }
 
@@ -668,13 +679,22 @@ export default function AdminPage() {
                       {u.activo ? 'Activo' : 'Inactivo'}
                     </span>
                     {u.id !== user.id && (
-                      <button
-                        onClick={() => toggleActivo(u)}
-                        className="text-gray-400 hover:text-gray-600"
-                        title={u.activo ? 'Desactivar' : 'Activar'}
-                      >
-                        {u.activo ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => toggleActivo(u)}
+                          className="text-gray-400 hover:text-gray-600"
+                          title={u.activo ? 'Desactivar' : 'Activar'}
+                        >
+                          {u.activo ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={() => eliminarUsuario(u)}
+                          className="text-gray-300 hover:text-red-500"
+                          title="Eliminar usuario"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
