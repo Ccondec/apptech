@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,7 +22,20 @@ function generarClave(): string {
   return `IONENERGY-${segmento(4)}-${segmento(4)}-${segmento(4)}`
 }
 
-const SESSION_KEY = 'snel_superadmin_auth'
+// Flag no-sensible: indica que el usuario pasó el auth en esta pestaña.
+// La sesión real vive en un cookie httpOnly firmado por el servidor.
+const SESSION_FLAG = 'snel_superadmin_authed'
+
+async function adminFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(path, {
+    ...init,
+    credentials: 'same-origin',
+    headers: {
+      ...(init?.headers ?? {}),
+      'Content-Type': 'application/json',
+    },
+  })
+}
 
 export default function LicenciasPage() {
   const [authed, setAuthed] = useState(false)
@@ -51,18 +63,22 @@ export default function LicenciasPage() {
   const [savingRenov, setSavingRenov] = useState(false)
 
   useEffect(() => {
-    if (sessionStorage.getItem(SESSION_KEY) === '1') setAuthed(true)
+    if (sessionStorage.getItem(SESSION_FLAG)) setAuthed(true)
   }, [])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     const res = await fetch('/api/superadmin-auth', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: masterInput }),
     })
     if (res.ok) {
-      sessionStorage.setItem(SESSION_KEY, '1')
+      // El cookie httpOnly lo setea el servidor; acá solo dejamos un flag
+      // no-sensible para que la pestaña recuerde que ya pasó el auth.
+      sessionStorage.setItem(SESSION_FLAG, '1')
+      setMasterInput('')
       setAuthed(true)
     } else {
       setAuthError('Clave incorrecta')
@@ -71,18 +87,29 @@ export default function LicenciasPage() {
 
   const cargar = async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('empresas')
-      .select('*')
-      .order('created_at', { ascending: false })
-    setEmpresas(data ?? [])
+    const res = await adminFetch('/api/superadmin/empresas')
+    if (res.status === 401) {
+      // Cookie expiró → forzar reauth
+      sessionStorage.removeItem(SESSION_FLAG)
+      setAuthed(false)
+      setLoading(false)
+      return
+    }
+    if (!res.ok) {
+      setEmpresas([])
+      setLoading(false)
+      return
+    }
+    const json = await res.json()
+    setEmpresas(json.empresas ?? [])
     setLoading(false)
   }
 
-  const cerrarSesion = useCallback(() => {
-    sessionStorage.removeItem(SESSION_KEY)
+  const cerrarSesion = useCallback(async () => {
+    sessionStorage.removeItem(SESSION_FLAG)
     setAuthed(false)
     setMasterInput('')
+    await fetch('/api/superadmin-logout', { method: 'POST', credentials: 'same-origin' })
   }, [])
 
   useInactivity(cerrarSesion, 15)
@@ -98,15 +125,20 @@ export default function LicenciasPage() {
   const crearEmpresa = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(''); setSuccess(''); setSaving(true)
-    const { error: err } = await supabase.from('empresas').insert({
-      nombre: nombre.trim(),
-      nombre_comercial: nombreComercial.trim() || null,
-      license_key: clave,
-      activa: true,
-      fecha_expiracion: expiracion || null,
+    const res = await adminFetch('/api/superadmin/empresas', {
+      method: 'POST',
+      body: JSON.stringify({
+        nombre: nombre.trim(),
+        nombre_comercial: nombreComercial.trim() || null,
+        license_key: clave,
+        fecha_expiracion: expiracion || null,
+      }),
     })
     setSaving(false)
-    if (err) { setError(err.message); return }
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setError(json.error ?? 'Error al crear empresa'); return
+    }
     setSuccess(`Empresa "${nombre}" creada con clave ${clave}`)
     setNombre(''); setNombreComercial(''); setExpiracion(''); setClave(generarClave())
     cargar()
@@ -114,17 +146,20 @@ export default function LicenciasPage() {
 
   const toggleActiva = async (empresa: Empresa) => {
     setEmpresas(prev => prev.map(e => e.id === empresa.id ? { ...e, activa: !e.activa } : e))
-    await supabase.from('empresas').update({ activa: !empresa.activa }).eq('id', empresa.id)
+    await adminFetch(`/api/superadmin/empresas/${empresa.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ activa: !empresa.activa }),
+    })
     cargar()
   }
 
   const renovar = async (empresa: Empresa) => {
     if (!nuevaFecha) return
     setSavingRenov(true)
-    await supabase.from('empresas').update({
-      activa: true,
-      fecha_expiracion: nuevaFecha,
-    }).eq('id', empresa.id)
+    await adminFetch(`/api/superadmin/empresas/${empresa.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ activa: true, fecha_expiracion: nuevaFecha }),
+    })
     setSavingRenov(false)
     setRenovandoId(null)
     setNuevaFecha('')

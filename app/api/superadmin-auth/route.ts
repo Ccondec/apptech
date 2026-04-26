@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { setSessionCookie } from '@/lib/superadmin-session'
 
 export async function POST(req: NextRequest) {
   const masterKey = process.env.SUPERADMIN_KEY
@@ -9,5 +10,7 @@ export async function POST(req: NextRequest) {
   if (key !== masterKey) {
     return NextResponse.json({ error: 'Clave incorrecta' }, { status: 401 })
   }
-  return NextResponse.json({ ok: true })
+  const res = NextResponse.json({ ok: true })
+  setSessionCookie(res)
+  return res
 }

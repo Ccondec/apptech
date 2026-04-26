@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthEmpresa } from '@/lib/api-auth'
+import { SUPABASE_URL } from '@/lib/supabase-config'
 
 export async function POST(req: NextRequest) {
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Debe especificar la empresa del cliente' }, { status: 400 })
   }
 
-  const admin = createClient('https://deouxnumhspmollumsoz.supabase.co', SERVICE_KEY, {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 

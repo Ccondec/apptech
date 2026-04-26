@@ -2,11 +2,12 @@ import { createClient } from '@supabase/supabase-js'
 import type { Metadata } from 'next'
 import { CheckCircle, Hash, User, Tag, Cpu, Zap, MapPin, ClipboardList, AlertCircle } from 'lucide-react'
 import HistorialTabs from './HistorialTabs'
+import { SUPABASE_URL } from '@/lib/supabase-config'
 
 // Usar service role para que RLS no bloquee la consulta pública del QR
 function getAdmin() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
-  return createClient('https://deouxnumhspmollumsoz.supabase.co', key)
+  return createClient(SUPABASE_URL, key)
 }
 
 interface Props {
