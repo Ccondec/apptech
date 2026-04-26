@@ -4,9 +4,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
-
-const SUPABASE_URL = 'https://deouxnumhspmollumsoz.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRlb3V4bnVtaHNwbW9sbHVtc296Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MzU1MDIsImV4cCI6MjA5MjAxMTUwMn0.V4nWluFT7-7zN7y8TCpnOAu01bhMeKpG4eZCc-8eFGw'
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config'
 
 export async function getAuthEmpresa(req: NextRequest): Promise<{ userId: string; empresaId: string } | null> {
   const authHeader = req.headers.get('authorization') ?? ''

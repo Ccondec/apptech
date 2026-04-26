@@ -1,7 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-
-const SUPABASE_URL = 'https://deouxnumhspmollumsoz.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRlb3V4bnVtaHNwbW9sbHVtc296Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MzU1MDIsImV4cCI6MjA5MjAxMTUwMn0.V4nWluFT7-7zN7y8TCpnOAu01bhMeKpG4eZCc-8eFGw'
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config'
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
@@ -143,29 +141,30 @@ export async function registrarConLicencia(
   nombre: string,
   licenseKey: string,
 ): Promise<{ ok: boolean; error?: string; rol?: 'admin' | 'tecnico' }> {
-  // 1. Validar clave de licencia
-  const { data: empresa, error: empErr } = await supabase
-    .from('empresas')
-    .select('id, activa, fecha_expiracion')
-    .eq('license_key', licenseKey.trim().toUpperCase())
-    .single()
+  // 1. Validar licencia y obtener rol sugerido (RPC SECURITY DEFINER:
+  //    bajo RLS, anon no puede leer empresas/usuarios directamente)
+  const { data: validacion, error: rpcErr } = await supabase.rpc('validar_licencia', {
+    p_license_key: licenseKey,
+  })
 
-  if (empErr || !empresa) return { ok: false, error: 'Clave de licencia inválida.' }
-  if (!empresa.activa) return { ok: false, error: 'La licencia está inactiva.' }
-  if (empresa.fecha_expiracion && new Date(empresa.fecha_expiracion) < new Date()) {
-    return { ok: false, error: 'La licencia ha expirado.' }
+  if (rpcErr || !validacion) {
+    return { ok: false, error: 'No se pudo validar la licencia.' }
   }
 
-  // 2. Auto-determinar rol: el primero en registrarse con esta licencia es admin
-  const { count } = await supabase
-    .from('usuarios')
-    .select('id', { count: 'exact', head: true })
-    .eq('empresa_id', empresa.id)
-    .eq('rol', 'admin')
+  const v = validacion as { ok: boolean; error?: string; empresa_id?: string; rol_sugerido?: 'admin' | 'tecnico' }
 
-  const rol: 'admin' | 'tecnico' = (count ?? 0) === 0 ? 'admin' : 'tecnico'
+  if (!v.ok) {
+    const mensajes: Record<string, string> = {
+      invalid: 'Clave de licencia inválida.',
+      inactive: 'La licencia está inactiva.',
+      expired: 'La licencia ha expirado.',
+    }
+    return { ok: false, error: mensajes[v.error ?? ''] ?? 'Licencia no válida.' }
+  }
 
-  // 3. Crear usuario en Supabase Auth
+  const rol = v.rol_sugerido ?? 'tecnico'
+
+  // 2. Crear usuario en Supabase Auth
   const { data: authData, error: authErr } = await supabase.auth.signUp({
     email,
     password,
@@ -174,10 +173,10 @@ export async function registrarConLicencia(
 
   if (authErr || !authData.user) return { ok: false, error: authErr?.message ?? 'Error al crear cuenta.' }
 
-  // 4. Crear perfil en tabla usuarios
+  // 3. Crear perfil en tabla usuarios (policy permite INSERT si id = auth.uid())
   const { error: profileErr } = await supabase.from('usuarios').insert({
     id: authData.user.id,
-    empresa_id: empresa.id,
+    empresa_id: v.empresa_id,
     nombre,
     rol,
   })
@@ -468,15 +467,11 @@ export async function desactivarFormToken(tokenId: string): Promise<boolean> {
 }
 
 export async function validarFormToken(tokenId: string): Promise<{ empresaId: string; empresa: Empresa; token: FormToken } | null> {
-  const { data } = await supabase
-    .from('form_tokens')
-    .select('*, empresa:empresas(*)')
-    .eq('id', tokenId)
-    .eq('activo', true)
-    .gt('expires_at', new Date().toISOString())
-    .single()
+  // RPC SECURITY DEFINER: bajo RLS, anon no puede leer form_tokens/empresas
+  const { data } = await supabase.rpc('validar_form_token', { p_token: tokenId })
   if (!data) return null
-  return { empresaId: data.empresa_id, empresa: data.empresa as Empresa, token: data as FormToken }
+  const payload = data as { token: FormToken; empresa: Empresa }
+  return { empresaId: payload.token.empresa_id, empresa: payload.empresa, token: payload.token }
 }
 
 // ── Consecutivos de informes por empresa y tipo ───────────────
@@ -796,17 +791,13 @@ export async function cancelarAsignacion(id: string): Promise<boolean> {
 export async function validarAsignacion(
   tokenId: string,
 ): Promise<{ empresaId: string; empresa: Empresa; asignacion: Asignacion } | null> {
-  const { data } = await supabase
-    .from('asignaciones')
-    .select('*, empresa:empresas(*)')
-    .eq('id', tokenId)
-    .eq('estado', 'pendiente')
-    .gt('expires_at', new Date().toISOString())
-    .single()
+  // RPC SECURITY DEFINER: bajo RLS, anon no puede leer asignaciones/empresas
+  const { data } = await supabase.rpc('validar_asignacion', { p_token: tokenId })
   if (!data) return null
+  const payload = data as { asignacion: Asignacion; empresa: Empresa }
   return {
-    empresaId: data.empresa_id,
-    empresa: data.empresa as Empresa,
-    asignacion: data as Asignacion,
+    empresaId: payload.asignacion.empresa_id,
+    empresa: payload.empresa,
+    asignacion: payload.asignacion,
   }
 }

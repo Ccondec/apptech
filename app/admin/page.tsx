@@ -6,7 +6,7 @@ import { supabase, getSession, Usuario, importarClientes, importarEquipos, setCo
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup, ClipboardList, SendHorizonal } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup, ClipboardList, SendHorizonal, Trash2 } from 'lucide-react'
 import { crearFormToken, listarFormTokens, desactivarFormToken, FormToken, crearAsignacion, listarAsignaciones, cancelarAsignacion, Asignacion } from '@/lib/supabase'
 
 export default function AdminPage() {
@@ -140,7 +140,7 @@ export default function AdminPage() {
   }
 
   const copiarEnlaceToken = (tokenId: string) => {
-    navigator.clipboard.writeText(`https://snelapp.com/form/${tokenId}`)
+    navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tech.snelapp.com'}/form/${tokenId}`)
     setCopiedTokenId(tokenId)
     setTimeout(() => setCopiedTokenId(null), 2000)
   }
@@ -178,7 +178,7 @@ export default function AdminPage() {
   }
 
   const copiarEnlaceAsig = (id: string) => {
-    navigator.clipboard.writeText(`https://snelapp.com/asignacion/${id}`)
+    navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tech.snelapp.com'}/asignacion/${id}`)
     setCopiedAsigId(id)
     setTimeout(() => setCopiedAsigId(null), 2000)
   }
@@ -189,7 +189,20 @@ export default function AdminPage() {
   }
 
   const toggleActivo = async (u: Usuario) => {
-    await supabase.from('usuarios').update({ activo: !u.activo }).eq('id', u.id)
+    const nuevoEstado = !u.activo
+    setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, activo: nuevoEstado } : x))
+    const { error } = await supabase.from('usuarios').update({ activo: nuevoEstado }).eq('id', u.id)
+    if (error) setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, activo: u.activo } : x))
+  }
+
+  const eliminarUsuario = async (u: Usuario) => {
+    if (!confirm(`¿Eliminar a "${u.nombre}"? Esta acción no se puede deshacer.`)) return
+    const session = await getSession()
+    await fetch('/api/eliminar-usuario', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ userId: u.id }),
+    })
     cargarUsuarios()
   }
 
@@ -664,16 +677,26 @@ export default function AdminPage() {
                     <p className="text-xs text-gray-400 capitalize">{u.rol}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${u.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                      {u.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                    {u.id !== user.id && (
+                    {u.id !== user.id ? (
                       <button
                         onClick={() => toggleActivo(u)}
-                        className="text-gray-400 hover:text-gray-600"
                         title={u.activo ? 'Desactivar' : 'Activar'}
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${u.activo ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-600' : 'bg-red-100 text-red-600 hover:bg-green-100 hover:text-green-700'}`}
                       >
-                        {u.activo ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                        {u.activo ? 'Activo' : 'Inactivo'}
+                      </button>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">
+                        Activo
+                      </span>
+                    )}
+                    {u.id !== user.id && (
+                      <button
+                        onClick={() => eliminarUsuario(u)}
+                        className="text-gray-300 hover:text-red-500"
+                        title="Eliminar usuario"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>

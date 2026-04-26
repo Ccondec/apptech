@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { SUPABASE_URL } from '@/lib/supabase-config'
 
 export async function GET(req: NextRequest) {
   const empresaId = req.nextUrl.searchParams.get('empresa_id')
@@ -8,7 +9,7 @@ export async function GET(req: NextRequest) {
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!SERVICE_KEY) return NextResponse.json({ numero: 1 })
 
-  const admin = createClient('https://deouxnumhspmollumsoz.supabase.co', SERVICE_KEY)
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY)
 
   const { data } = await admin
     .from('consecutivos')

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { SUPABASE_URL } from '@/lib/supabase-config'
 
 export async function POST(req: NextRequest) {
-  const SUPABASE_URL = 'https://deouxnumhspmollumsoz.supabase.co'
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!SERVICE_KEY) {
     return NextResponse.json({ error: 'Servicio no configurado' }, { status: 503 })
