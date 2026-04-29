@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup, ClipboardList, SendHorizonal, Trash2 } from 'lucide-react'
 import { crearFormToken, listarFormTokens, desactivarFormToken, FormToken, crearAsignacion, listarAsignaciones, cancelarAsignacion, Asignacion } from '@/lib/supabase'
+import { getFormUrl, getAsignacionUrl } from '@/lib/site-url'
 
 export default function AdminPage() {
   const { user, loading } = useAuth()
@@ -140,7 +141,7 @@ export default function AdminPage() {
   }
 
   const copiarEnlaceToken = (tokenId: string) => {
-    navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tech.snelapp.com'}/form/${tokenId}`)
+    navigator.clipboard.writeText(getFormUrl(tokenId))
     setCopiedTokenId(tokenId)
     setTimeout(() => setCopiedTokenId(null), 2000)
   }
@@ -178,7 +179,7 @@ export default function AdminPage() {
   }
 
   const copiarEnlaceAsig = (id: string) => {
-    navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tech.snelapp.com'}/asignacion/${id}`)
+    navigator.clipboard.writeText(getAsignacionUrl(id))
     setCopiedAsigId(id)
     setTimeout(() => setCopiedAsigId(null), 2000)
   }

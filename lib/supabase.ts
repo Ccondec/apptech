@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config'
+import { getSiteUrl } from './site-url'
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
@@ -91,7 +92,7 @@ export async function solicitarRecuperacion(email: string): Promise<{ ok: boolea
   }
 
   const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://snelapp.com'}/reset-password`,
+    redirectTo: `${getSiteUrl()}/reset-password`,
   })
   if (error) return { ok: false, error: error.message }
   return { ok: true }

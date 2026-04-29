@@ -1458,7 +1458,8 @@ const TechnicalForm = ({ technician, empresaId, onLogout, externalToken, asignac
     let qrCanvas: HTMLCanvasElement | null = null
     try {
       const QRCode = await import('qrcode')
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tech.snelapp.com'
+      const { getSiteUrl } = await import('@/lib/site-url')
+      const siteUrl = getSiteUrl()
       const qrText = qrCodeId
         ? `${siteUrl}/equipo/${encodeURIComponent(qrCodeId)}`
         : `${siteUrl}/informe?n=${repNum}&fecha=${encodeURIComponent(fecha)}&cliente=${encodeURIComponent(client)}`
@@ -3312,7 +3313,10 @@ yPosition += 8;
       pdf.save(filename);
 
       const qr = String(formData.qrCode ?? '').trim();
-      const link = qr ? `\n🔗 tech.snelapp.com/equipo/${qr}` : '';
+      // Mostrar el link sin "https://" para que se vea más limpio en WhatsApp,
+      // pero usando el dominio real (en lugar del hardcode anterior).
+      const { getEquipoUrl } = await import('@/lib/site-url');
+      const link = qr ? `\n🔗 ${getEquipoUrl(qr).replace(/^https?:\/\//, '')}` : '';
       const text =
         `*Reporte Técnico — ${companyInfo.name}*\n` +
         `📋 Cliente: ${formData.clientCompany ?? ''}\n` +
