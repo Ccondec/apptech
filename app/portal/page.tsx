@@ -1,21 +1,30 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
-import { LogOut, Search, FileText, Download, Filter, X, Building2, MapPin, Cpu, Calendar } from 'lucide-react'
+import {
+  LogOut, Search, Filter, X, Building2, MapPin, Cpu, Settings2,
+  PenLine, History, Send, ChevronRight, AlertCircle,
+} from 'lucide-react'
 
-interface Informe {
+interface Equipo {
   id: string
   qr_code: string
-  cliente: string
-  marca: string
-  modelo: string
-  serial: string
-  ubicacion: string
-  ciudad: string
-  tipo_reporte: string
-  numero_informe: string
+  brand: string | null
+  model: string | null
+  serial: string | null
+  capacity: string | null
+  ubicacion: string | null
+  client_city: string | null
+}
+
+interface InformeMin {
+  id: string
+  qr_code: string
+  numero_informe: string | null
+  tipo_reporte: string | null
   created_at: string
   pdf_url: string | null
 }
@@ -34,17 +43,19 @@ export default function PortalPage() {
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
 
-  const [informes, setInformes] = useState<Informe[]>([])
+  const [equipos, setEquipos] = useState<Equipo[]>([])
+  const [informes, setInformes] = useState<InformeMin[]>([])
   const [cargando, setCargando] = useState(true)
 
-  // Filtros
+  // Filtros (los mismos que ya existían, adaptados a equipos)
   const [busqueda, setBusqueda] = useState('')
   const [filtroCiudad, setFiltroCiudad] = useState('')
   const [filtroUbicacion, setFiltroUbicacion] = useState('')
-  const [filtroTipo, setFiltroTipo] = useState('')
-  const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
-  const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
   const [mostrarFiltros, setMostrarFiltros] = useState(false)
+
+  // Modales
+  const [modalFirmar, setModalFirmar] = useState<Equipo | null>(null)
+  const [modalSolicitar, setModalSolicitar] = useState<Equipo | null>(null)
 
   useEffect(() => {
     if (!loading && !user) { router.push('/login'); return }
@@ -53,60 +64,96 @@ export default function PortalPage() {
 
   useEffect(() => {
     if (!user || user.rol !== 'cliente' || !user.client_company) return
-    cargarInformes()
+    cargarDatos()
   }, [user])
 
-  const cargarInformes = async () => {
+  const cargarDatos = async () => {
     setCargando(true)
-    const { data } = await supabase
-      .from('informes')
-      .select('id, qr_code, cliente, marca, modelo, serial, ubicacion, ciudad, tipo_reporte, numero_informe, created_at, pdf_url')
+
+    // 1) Resolver client_id a partir del nombre de empresa del usuario
+    const { data: cliente } = await supabase
+      .from('clientes')
+      .select('id')
       .eq('empresa_id', user!.empresa_id)
-      .eq('cliente', user!.client_company)
-      .order('created_at', { ascending: false })
-    setInformes((data as Informe[]) ?? [])
+      .ilike('company', user!.client_company!)
+      .maybeSingle()
+
+    if (!cliente) {
+      setEquipos([])
+      setInformes([])
+      setCargando(false)
+      return
+    }
+
+    // 2) Equipos del cliente
+    const [{ data: eqs }, { data: infs }] = await Promise.all([
+      supabase
+        .from('equipos')
+        .select('id, qr_code, brand, model, serial, capacity, ubicacion, client_city')
+        .eq('empresa_id', user!.empresa_id)
+        .eq('client_id', cliente.id)
+        .order('ubicacion', { ascending: true }),
+      supabase
+        .from('informes')
+        .select('id, qr_code, numero_informe, tipo_reporte, created_at, pdf_url')
+        .eq('empresa_id', user!.empresa_id)
+        .eq('cliente', user!.client_company)
+        .order('created_at', { ascending: false }),
+    ])
+
+    setEquipos((eqs as Equipo[]) ?? [])
+    setInformes((infs as InformeMin[]) ?? [])
     setCargando(false)
   }
 
-  // Opciones únicas para filtros
-  const ciudades = useMemo(() => [...new Set(informes.map(i => i.ciudad).filter(Boolean))].sort(), [informes])
-  const ubicaciones = useMemo(() => {
-    const base = filtroCiudad ? informes.filter(i => i.ciudad === filtroCiudad) : informes
-    return [...new Set(base.map(i => i.ubicacion).filter(Boolean))].sort()
-  }, [informes, filtroCiudad])
-  const tipos = useMemo(() => [...new Set(informes.map(i => i.tipo_reporte).filter(Boolean))].sort(), [informes])
+  // Mapa qr_code → informes (para badge "Firmar (N)" y modal de informes)
+  const informesPorQr = useMemo(() => {
+    const map = new Map<string, InformeMin[]>()
+    for (const inf of informes) {
+      if (!inf.qr_code) continue
+      const arr = map.get(inf.qr_code) ?? []
+      arr.push(inf)
+      map.set(inf.qr_code, arr)
+    }
+    return map
+  }, [informes])
 
-  // Informes filtrados
-  const informesFiltrados = useMemo(() => {
-    return informes.filter(inf => {
-      if (filtroCiudad && inf.ciudad !== filtroCiudad) return false
-      if (filtroUbicacion && inf.ubicacion !== filtroUbicacion) return false
-      if (filtroTipo && inf.tipo_reporte !== filtroTipo) return false
-      if (filtroFechaDesde && inf.created_at < filtroFechaDesde) return false
-      if (filtroFechaHasta && inf.created_at.slice(0, 10) > filtroFechaHasta) return false
+  // Opciones únicas para filtros
+  const ciudades = useMemo(
+    () => [...new Set(equipos.map(e => e.client_city).filter(Boolean) as string[])].sort(),
+    [equipos]
+  )
+  const ubicaciones = useMemo(() => {
+    const base = filtroCiudad ? equipos.filter(e => e.client_city === filtroCiudad) : equipos
+    return [...new Set(base.map(e => e.ubicacion).filter(Boolean) as string[])].sort()
+  }, [equipos, filtroCiudad])
+
+  // Equipos filtrados
+  const equiposFiltrados = useMemo(() => {
+    return equipos.filter(eq => {
+      if (filtroCiudad && eq.client_city !== filtroCiudad) return false
+      if (filtroUbicacion && eq.ubicacion !== filtroUbicacion) return false
       if (busqueda) {
         const q = busqueda.toLowerCase()
         return (
-          inf.marca?.toLowerCase().includes(q) ||
-          inf.modelo?.toLowerCase().includes(q) ||
-          inf.serial?.toLowerCase().includes(q) ||
-          inf.ubicacion?.toLowerCase().includes(q) ||
-          inf.numero_informe?.toLowerCase().includes(q)
+          eq.brand?.toLowerCase().includes(q) ||
+          eq.model?.toLowerCase().includes(q) ||
+          eq.serial?.toLowerCase().includes(q) ||
+          eq.ubicacion?.toLowerCase().includes(q) ||
+          eq.qr_code?.toLowerCase().includes(q)
         )
       }
       return true
     })
-  }, [informes, filtroCiudad, filtroUbicacion, filtroTipo, filtroFechaDesde, filtroFechaHasta, busqueda])
+  }, [equipos, filtroCiudad, filtroUbicacion, busqueda])
 
   const limpiarFiltros = () => {
-    setFiltroCiudad(''); setFiltroUbicacion(''); setFiltroTipo('')
-    setFiltroFechaDesde(''); setFiltroFechaHasta(''); setBusqueda('')
+    setFiltroCiudad('')
+    setFiltroUbicacion('')
+    setBusqueda('')
   }
 
-  const hayFiltros = filtroCiudad || filtroUbicacion || filtroTipo || filtroFechaDesde || filtroFechaHasta || busqueda
-
-  const formatFecha = (iso: string) =>
-    new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+  const hayFiltros = filtroCiudad || filtroUbicacion || busqueda
 
   if (loading || !user) return null
 
@@ -119,7 +166,7 @@ export default function PortalPage() {
             <img src="/icons/icon-192x192.png" className="w-8 h-8 rounded-full object-contain border border-gray-100" alt="Logo" />
             <div>
               <p className="font-semibold text-sm text-gray-800">{user.client_company}</p>
-              <p className="text-xs text-gray-400">Portal de Informes Técnicos</p>
+              <p className="text-xs text-gray-400">Portal de Equipos</p>
             </div>
           </div>
           <button onClick={signOut} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-600">
@@ -129,7 +176,6 @@ export default function PortalPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
-
         {/* Barra de búsqueda + filtros */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
           <div className="flex gap-2">
@@ -139,13 +185,15 @@ export default function PortalPage() {
                 type="text"
                 value={busqueda}
                 onChange={e => setBusqueda(e.target.value)}
-                placeholder="Buscar por marca, modelo, serial o N° informe…"
+                placeholder="Buscar por marca, modelo, serial, QR…"
                 className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               />
             </div>
             <button
               onClick={() => setMostrarFiltros(v => !v)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${mostrarFiltros ? 'bg-green-600 text-white border-green-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                mostrarFiltros ? 'bg-green-600 text-white border-green-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
             >
               <Filter className="w-4 h-4" />
               Filtros
@@ -159,8 +207,7 @@ export default function PortalPage() {
           </div>
 
           {mostrarFiltros && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1 border-t border-gray-100">
-              {/* Ciudad */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-gray-100">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
                   <Building2 className="w-3 h-3" /> Ciudad
@@ -175,7 +222,6 @@ export default function PortalPage() {
                 </select>
               </div>
 
-              {/* Ubicación / Sede */}
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> Sede / Ubicación
@@ -189,47 +235,6 @@ export default function PortalPage() {
                   {ubicaciones.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
-
-              {/* Tipo de informe */}
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
-                  <Cpu className="w-3 h-3" /> Tipo de equipo
-                </label>
-                <select
-                  value={filtroTipo}
-                  onChange={e => setFiltroTipo(e.target.value)}
-                  className="w-full h-9 px-2 border border-gray-200 rounded-md text-sm bg-white"
-                >
-                  <option value="">Todos</option>
-                  {tipos.map(t => <option key={t} value={t}>{TIPO_LABELS[t] ?? t}</option>)}
-                </select>
-              </div>
-
-              {/* Fecha desde */}
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> Desde
-                </label>
-                <input
-                  type="date"
-                  value={filtroFechaDesde}
-                  onChange={e => setFiltroFechaDesde(e.target.value)}
-                  className="w-full h-9 px-2 border border-gray-200 rounded-md text-sm bg-white"
-                />
-              </div>
-
-              {/* Fecha hasta */}
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> Hasta
-                </label>
-                <input
-                  type="date"
-                  value={filtroFechaHasta}
-                  onChange={e => setFiltroFechaHasta(e.target.value)}
-                  className="w-full h-9 px-2 border border-gray-200 rounded-md text-sm bg-white"
-                />
-              </div>
             </div>
           )}
         </div>
@@ -237,79 +242,214 @@ export default function PortalPage() {
         {/* Resumen */}
         <div className="flex items-center justify-between px-1">
           <p className="text-sm text-gray-500">
-            {cargando ? 'Cargando…' : `${informesFiltrados.length} informe${informesFiltrados.length !== 1 ? 's' : ''} encontrado${informesFiltrados.length !== 1 ? 's' : ''}`}
+            {cargando
+              ? 'Cargando…'
+              : `${equiposFiltrados.length} equipo${equiposFiltrados.length !== 1 ? 's' : ''}`}
             {hayFiltros && <span className="ml-1 text-green-600 font-medium">(filtrado)</span>}
           </p>
         </div>
 
-        {/* Lista de informes */}
+        {/* Lista de equipos */}
         {cargando ? (
           <div className="flex justify-center py-16">
             <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : informesFiltrados.length === 0 ? (
+        ) : equiposFiltrados.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
-            <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No se encontraron informes</p>
-            {hayFiltros && <p className="text-sm text-gray-400 mt-1">Intenta ajustar los filtros</p>}
+            <Cpu className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 font-medium">No se encontraron equipos</p>
+            {hayFiltros
+              ? <p className="text-sm text-gray-400 mt-1">Intenta ajustar los filtros</p>
+              : <p className="text-sm text-gray-400 mt-1">Aún no se han registrado equipos para tu empresa</p>}
           </div>
         ) : (
           <div className="space-y-3">
-            {informesFiltrados.map(inf => (
-              <div key={inf.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
-                {/* Ícono tipo */}
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-lg">
-                  {inf.tipo_reporte === 'ups' ? '🔋' :
-                   inf.tipo_reporte === 'aire' ? '❄️' :
-                   inf.tipo_reporte === 'planta' ? '⚡' :
-                   inf.tipo_reporte === 'fotovoltaico' ? '☀️' :
-                   inf.tipo_reporte === 'impresora' ? '🖨️' :
-                   inf.tipo_reporte === 'apantallamiento' ? '⛈️' : '📋'}
-                </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold text-sm text-gray-800">{inf.marca} {inf.modelo}</p>
-                    {inf.numero_informe && (
-                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">#{inf.numero_informe}</span>
-                    )}
+            {equiposFiltrados.map(eq => {
+              const infs = informesPorQr.get(eq.qr_code) ?? []
+              const countInformes = infs.length
+              return (
+                <div key={eq.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                  {/* Info del equipo */}
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                      <Settings2 className="w-5 h-5 text-gray-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-sm text-gray-800">
+                          {eq.brand || '—'} {eq.model || ''}
+                        </p>
+                        {eq.capacity && (
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{eq.capacity}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                        {eq.serial && <span className="text-xs text-gray-500">S/N: {eq.serial}</span>}
+                        {eq.ubicacion && (
+                          <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                            <MapPin className="w-3 h-3" />{eq.ubicacion}
+                          </span>
+                        )}
+                        {eq.client_city && (
+                          <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                            <Building2 className="w-3 h-3" />{eq.client_city}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-0.5">QR: {eq.qr_code}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    {inf.serial && <span className="text-xs text-gray-400">S/N: {inf.serial}</span>}
-                    {inf.ubicacion && (
-                      <span className="text-xs text-gray-400 flex items-center gap-0.5">
-                        <MapPin className="w-3 h-3" />{inf.ubicacion}
-                      </span>
-                    )}
-                    {inf.ciudad && (
-                      <span className="text-xs text-gray-400 flex items-center gap-0.5">
-                        <Building2 className="w-3 h-3" />{inf.ciudad}
-                      </span>
-                    )}
-                    <span className="text-xs text-gray-400">{formatFecha(inf.created_at)}</span>
-                  </div>
-                  <p className="text-xs text-green-600 mt-0.5">{TIPO_LABELS[inf.tipo_reporte] ?? inf.tipo_reporte}</p>
-                </div>
 
-                {/* Botón PDF */}
-                {inf.pdf_url ? (
-                  <a
-                    href={inf.pdf_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" /> PDF
-                  </a>
-                ) : (
-                  <span className="flex-shrink-0 text-xs text-gray-300 px-3 py-2">Sin PDF</span>
-                )}
-              </div>
-            ))}
+                  {/* Acciones */}
+                  <div className="flex items-center gap-2 flex-shrink-0 sm:justify-end">
+                    {/* Firmar */}
+                    <button
+                      onClick={() => setModalFirmar(eq)}
+                      disabled={countInformes === 0}
+                      title={countInformes === 0 ? 'Sin informes para firmar' : `${countInformes} informe(s)`}
+                      className="relative flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white disabled:cursor-not-allowed"
+                    >
+                      <PenLine className="w-3.5 h-3.5" /> Firmar
+                      {countInformes > 0 && (
+                        <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-gray-800 text-white rounded-full">
+                          {countInformes}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Historial → /equipo/[qr_code] */}
+                    <Link
+                      href={`/equipo/${encodeURIComponent(eq.qr_code)}`}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-700 hover:bg-gray-50"
+                    >
+                      <History className="w-3.5 h-3.5" /> Historial
+                    </Link>
+
+                    {/* Solicitar servicio */}
+                    <button
+                      onClick={() => setModalSolicitar(eq)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-gray-800 hover:bg-gray-700 text-white rounded-md"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Solicitar
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </main>
+
+      {/* Modal Firmar — lista de informes del equipo */}
+      {modalFirmar && (
+        <ModalFirmar
+          equipo={modalFirmar}
+          informes={informesPorQr.get(modalFirmar.qr_code) ?? []}
+          onClose={() => setModalFirmar(null)}
+        />
+      )}
+
+      {/* Modal Solicitar servicio — stub */}
+      {modalSolicitar && (
+        <ModalSolicitar
+          equipo={modalSolicitar}
+          onClose={() => setModalSolicitar(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Modal: Firmar (lista informes para firmar — stub de firma) ─────────────
+function ModalFirmar({
+  equipo, informes, onClose,
+}: { equipo: Equipo; informes: InformeMin[]; onClose: () => void }) {
+  const formatFecha = (iso: string) =>
+    new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-gray-800">Firmar informe</p>
+            <p className="text-xs text-gray-500">{equipo.brand} {equipo.model} · {equipo.serial}</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {informes.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No hay informes para este equipo.</p>
+          ) : (
+            informes.map(inf => (
+              <button
+                key={inf.id}
+                onClick={() => alert('Flujo de firma — próximamente. Por ahora abre el PDF para revisar.')}
+                className="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+              >
+                <PenLine className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800">
+                    {inf.numero_informe ? `N° ${inf.numero_informe}` : 'Informe sin número'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {inf.tipo_reporte ? (TIPO_LABELS[inf.tipo_reporte] ?? inf.tipo_reporte) : 'Informe técnico'} · {formatFecha(inf.created_at)}
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </button>
+            ))
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 bg-amber-50 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800">
+            La firma sobre PDF está en desarrollo. Pronto podrás firmar directamente desde aquí.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal: Solicitar servicio (stub) ───────────────────────────────────────
+function ModalSolicitar({
+  equipo, onClose,
+}: { equipo: Equipo; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-gray-800">Solicitar servicio</p>
+            <p className="text-xs text-gray-500">{equipo.brand} {equipo.model} · {equipo.serial}</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-6 text-center space-y-3">
+          <div className="w-12 h-12 rounded-full bg-gray-100 mx-auto flex items-center justify-center">
+            <Send className="w-6 h-6 text-gray-500" />
+          </div>
+          <p className="text-sm font-medium text-gray-800">Sistema de tickets en desarrollo</p>
+          <p className="text-xs text-gray-500">
+            Pronto podrás reportar emergencias y solicitar servicio técnico directamente desde el portal.
+            Por ahora, contactá al equipo técnico por los canales habituales.
+          </p>
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-md">
+            Cerrar
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
