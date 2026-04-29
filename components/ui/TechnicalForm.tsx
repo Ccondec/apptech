@@ -531,35 +531,29 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
     setProcessingPhoto(true);
 
     getExifOrientation(workingFile).then(orientation => {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const dataUrl = ev.target?.result as string;
-        if (!dataUrl) { setProcessingPhoto(false); return; }
-        const img = new Image();
-        img.onload = () => {
-          try {
-            const url = drawWithOrientation(img, orientation);
-            addPhotoUrl(url);
-          } catch (err) {
-            console.error('drawWithOrientation error:', err);
-            alert('Error al procesar la imagen. Intenta con otra foto.');
-          } finally {
-            setProcessingPhoto(false);
-          }
-        };
-        img.onerror = (err) => {
-          console.error('img.onerror:', err);
+      // Object URL en vez de readAsDataURL: evita la expansión a base64
+      // (33% más grande) que reventaba Safari iOS con fotos horizontales 12MP.
+      const objectUrl = URL.createObjectURL(workingFile);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const url = drawWithOrientation(img, orientation);
+          addPhotoUrl(url);
+        } catch (err) {
+          console.error('drawWithOrientation error:', err);
+          alert('Error al procesar la imagen. Intenta con otra foto.');
+        } finally {
+          URL.revokeObjectURL(objectUrl);
           setProcessingPhoto(false);
-          alert('No se pudo cargar la imagen. Si usas iPhone, activa "Más compatible" en Ajustes > Cámara > Formatos.');
-        };
-        img.src = dataUrl;
+        }
       };
-      reader.onerror = (err) => {
-        console.error('FileReader error:', err);
+      img.onerror = (err) => {
+        console.error('img.onerror:', err);
+        URL.revokeObjectURL(objectUrl);
         setProcessingPhoto(false);
-        alert('No se pudo leer el archivo.');
+        alert('No se pudo cargar la imagen. Probá con otra foto.');
       };
-      reader.readAsDataURL(workingFile);
+      img.src = objectUrl;
     });
   }, [getExifOrientation, drawWithOrientation, addPhotoUrl]);
 
