@@ -412,60 +412,18 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [processingPhoto, setProcessingPhoto] = useState(false);
 
-  // Lee orientación EXIF del JPEG (primeros 64KB)
-  const getExifOrientation = useCallback((file: File): Promise<number> => {
-    return new Promise(resolve => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        try {
-          const view = new DataView(e.target!.result as ArrayBuffer);
-          if (view.getUint16(0, false) !== 0xFFD8) { resolve(1); return; }
-          let offset = 2;
-          while (offset + 4 < view.byteLength) {
-            const marker = view.getUint16(offset, false);
-            offset += 2;
-            if (marker === 0xFFE1) {
-              // APP1: [2 len][6 "Exif\0\0"][TIFF...]
-              if (view.getUint32(offset + 2, false) !== 0x45786966) { resolve(1); return; }
-              const tiff = offset + 8; // inicio del bloque TIFF
-              const little = view.getUint16(tiff, false) === 0x4949;
-              const ifd0 = tiff + view.getUint32(tiff + 4, little);
-              const tags = view.getUint16(ifd0, little);
-              for (let i = 0; i < tags; i++) {
-                const t = ifd0 + 2 + i * 12;
-                if (t + 12 > view.byteLength) break;
-                if (view.getUint16(t, little) === 0x0112) {
-                  resolve(view.getUint16(t + 8, little));
-                  return;
-                }
-              }
-              resolve(1); return;
-            } else if ((marker & 0xFF00) !== 0xFF00) break;
-            else offset += view.getUint16(offset, false);
-          }
-        } catch { /* ignorar */ }
-        resolve(1);
-      };
-      reader.onerror = () => resolve(1);
-      reader.readAsArrayBuffer(file.slice(0, 64 * 1024));
-    });
-  }, []);
-
-  // Un solo canvas: aplica escala + orientación EXIF en un paso para no crear
-  // canvas de tamaño natural (evita OOM en iOS con fotos de 12MP+)
-  const drawWithOrientation = useCallback((img: HTMLImageElement, orientation: number): string => {
+  // Downscale + fondo blanco. La orientación EXIF la maneja el browser nativo
+  // al hacer img.src=objectURL (Safari 13.1+/Chrome 81+/Firefox 77+ auto-orient
+  // por defecto). Aplicar EXIF nosotros causaba doble rotación en verticales.
+  const drawDownscaled = useCallback((img: HTMLImageElement): string => {
     const sw = img.naturalWidth  || img.width;
     const sh = img.naturalHeight || img.height;
     if (!sw || !sh) throw new Error('imagen vacía');
 
-    const swap = orientation >= 5 && orientation <= 8;
-    const outW = swap ? sh : sw;
-    const outH = swap ? sw : sh;
-
     const MAX = 1600;
-    const s = Math.min(MAX / outW, MAX / outH, 1); // factor de escala
-    const cw = Math.max(1, Math.round(outW * s));
-    const ch = Math.max(1, Math.round(outH * s));
+    const s = Math.min(MAX / sw, MAX / sh, 1);
+    const cw = Math.max(1, Math.round(sw * s));
+    const ch = Math.max(1, Math.round(sh * s));
 
     const canvas = document.createElement('canvas');
     canvas.width  = cw;
@@ -473,20 +431,7 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
     const ctx = canvas.getContext('2d')!;
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, cw, ch);
-
-    // La transformación combina la escala s con la corrección de orientación.
-    // Dibujamos a tamaño natural (0,0) para que la matriz haga el escalado.
-    switch (orientation) {
-      case 1: ctx.drawImage(img, 0, 0, cw, ch);                      break;
-      case 2: ctx.transform(-s,  0,  0,  s, cw,   0); ctx.drawImage(img, 0, 0); break;
-      case 3: ctx.transform(-s,  0,  0, -s, cw,  ch); ctx.drawImage(img, 0, 0); break;
-      case 4: ctx.transform( s,  0,  0, -s,  0,  ch); ctx.drawImage(img, 0, 0); break;
-      case 5: ctx.transform( 0,  s,  s,  0,  0,   0); ctx.drawImage(img, 0, 0); break;
-      case 6: ctx.transform( 0,  s, -s,  0, sh*s,  0); ctx.drawImage(img, 0, 0); break;
-      case 7: ctx.transform( 0, -s, -s,  0, sh*s, sw*s); ctx.drawImage(img, 0, 0); break;
-      case 8: ctx.transform( 0, -s,  s,  0,  0,  sw*s); ctx.drawImage(img, 0, 0); break;
-      default: ctx.drawImage(img, 0, 0, cw, ch);                     break;
-    }
+    ctx.drawImage(img, 0, 0, cw, ch);
 
     return canvas.toDataURL('image/jpeg', 0.72);
   }, []);
@@ -530,32 +475,30 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
 
     setProcessingPhoto(true);
 
-    getExifOrientation(workingFile).then(orientation => {
-      // Object URL en vez de readAsDataURL: evita la expansión a base64
-      // (33% más grande) que reventaba Safari iOS con fotos horizontales 12MP.
-      const objectUrl = URL.createObjectURL(workingFile);
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const url = drawWithOrientation(img, orientation);
-          addPhotoUrl(url);
-        } catch (err) {
-          console.error('drawWithOrientation error:', err);
-          alert('Error al procesar la imagen. Intenta con otra foto.');
-        } finally {
-          URL.revokeObjectURL(objectUrl);
-          setProcessingPhoto(false);
-        }
-      };
-      img.onerror = (err) => {
-        console.error('img.onerror:', err);
+    // Object URL en vez de readAsDataURL: evita la expansión a base64
+    // (33% más grande) que reventaba Safari iOS con fotos horizontales 12MP.
+    const objectUrl = URL.createObjectURL(workingFile);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const url = drawDownscaled(img);
+        addPhotoUrl(url);
+      } catch (err) {
+        console.error('drawDownscaled error:', err);
+        alert('Error al procesar la imagen. Intenta con otra foto.');
+      } finally {
         URL.revokeObjectURL(objectUrl);
         setProcessingPhoto(false);
-        alert('No se pudo cargar la imagen. Probá con otra foto.');
-      };
-      img.src = objectUrl;
-    });
-  }, [getExifOrientation, drawWithOrientation, addPhotoUrl]);
+      }
+    };
+    img.onerror = (err) => {
+      console.error('img.onerror:', err);
+      URL.revokeObjectURL(objectUrl);
+      setProcessingPhoto(false);
+      alert('No se pudo cargar la imagen. Probá con otra foto.');
+    };
+    img.src = objectUrl;
+  }, [drawDownscaled, addPhotoUrl]);
 
   const handleCamera  = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (file) processAndAddPhoto(file);
