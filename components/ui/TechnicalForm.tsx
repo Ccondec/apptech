@@ -501,23 +501,36 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
     });
   }, [setFormData]);
 
-  const processAndAddPhoto = useCallback((file: File) => {
+  const processAndAddPhoto = useCallback(async (file: File) => {
     if (file.size > 30 * 1024 * 1024) {
       alert('El archivo es muy grande. Máximo 30MB.');
       return;
     }
 
-    // Rechazar HEIC/HEIF — el canvas no puede decodificarlos
+    // HEIC/HEIF: convertir a JPEG en el navegador (canvas no los decodifica nativo)
     const name = file.name?.toLowerCase() ?? '';
     const type = file.type?.toLowerCase() ?? '';
-    if (type.includes('heic') || type.includes('heif') || name.endsWith('.heic') || name.endsWith('.heif')) {
-      alert('Formato HEIC no soportado. En Ajustes > Cámara > Formatos elige "Más compatible" para usar JPEG.');
-      return;
+    const isHeic = type.includes('heic') || type.includes('heif') || name.endsWith('.heic') || name.endsWith('.heif');
+
+    let workingFile = file;
+    if (isHeic) {
+      setProcessingPhoto(true);
+      try {
+        const heic2any = (await import('heic2any')).default;
+        const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+        const out = Array.isArray(blob) ? blob[0] : blob;
+        workingFile = new File([out], name.replace(/\.heic|\.heif$/i, '.jpg'), { type: 'image/jpeg' });
+      } catch (err) {
+        console.error('heic2any error:', err);
+        setProcessingPhoto(false);
+        alert('No se pudo convertir el archivo HEIC. Intenta exportarlo como JPEG.');
+        return;
+      }
     }
 
     setProcessingPhoto(true);
 
-    getExifOrientation(file).then(orientation => {
+    getExifOrientation(workingFile).then(orientation => {
       const reader = new FileReader();
       reader.onload = ev => {
         const dataUrl = ev.target?.result as string;
@@ -546,7 +559,7 @@ const PhotosSection = ({ formData, setFormData, isMobile }: { formData: Record<s
         setProcessingPhoto(false);
         alert('No se pudo leer el archivo.');
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(workingFile);
     });
   }, [getExifOrientation, drawWithOrientation, addPhotoUrl]);
 
