@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import {
-  LogOut, Search, Filter, X, Building2, MapPin, Cpu, Settings2,
+  LogOut, Search, Filter, X, Building2, MapPin, Cpu, Settings2, Calendar,
   PenLine, History, Send, ChevronRight, AlertCircle,
 } from 'lucide-react'
 
@@ -51,6 +51,9 @@ export default function PortalPage() {
   const [busqueda, setBusqueda] = useState('')
   const [filtroCiudad, setFiltroCiudad] = useState('')
   const [filtroUbicacion, setFiltroUbicacion] = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('')
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
   const [mostrarFiltros, setMostrarFiltros] = useState(false)
 
   // Modales
@@ -118,6 +121,22 @@ export default function PortalPage() {
     return map
   }, [informes])
 
+  // Por equipo: tipo (más frecuente entre sus informes) y última fecha
+  const metaPorQr = useMemo(() => {
+    const map = new Map<string, { tipo?: string; lastDate?: string }>()
+    for (const [qr, infs] of informesPorQr) {
+      // Tipo más frecuente
+      const counts = new Map<string, number>()
+      for (const i of infs) {
+        if (i.tipo_reporte) counts.set(i.tipo_reporte, (counts.get(i.tipo_reporte) ?? 0) + 1)
+      }
+      const tipo = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+      const lastDate = infs[0]?.created_at // ya vienen ordenados desc
+      map.set(qr, { tipo, lastDate })
+    }
+    return map
+  }, [informesPorQr])
+
   // Opciones únicas para filtros
   const ciudades = useMemo(
     () => [...new Set(equipos.map(e => e.client_city).filter(Boolean) as string[])].sort(),
@@ -127,12 +146,32 @@ export default function PortalPage() {
     const base = filtroCiudad ? equipos.filter(e => e.client_city === filtroCiudad) : equipos
     return [...new Set(base.map(e => e.ubicacion).filter(Boolean) as string[])].sort()
   }, [equipos, filtroCiudad])
+  const tipos = useMemo(
+    () => [...new Set([...metaPorQr.values()].map(m => m.tipo).filter(Boolean) as string[])].sort(),
+    [metaPorQr]
+  )
 
   // Equipos filtrados
   const equiposFiltrados = useMemo(() => {
     return equipos.filter(eq => {
       if (filtroCiudad && eq.client_city !== filtroCiudad) return false
       if (filtroUbicacion && eq.ubicacion !== filtroUbicacion) return false
+
+      const meta = metaPorQr.get(eq.qr_code)
+      if (filtroTipo && meta?.tipo !== filtroTipo) return false
+
+      if (filtroFechaDesde || filtroFechaHasta) {
+        // Filtra por equipos con AL MENOS un informe en el rango
+        const infs = informesPorQr.get(eq.qr_code) ?? []
+        const hit = infs.some(i => {
+          const fecha = i.created_at.slice(0, 10)
+          if (filtroFechaDesde && fecha < filtroFechaDesde) return false
+          if (filtroFechaHasta && fecha > filtroFechaHasta) return false
+          return true
+        })
+        if (!hit) return false
+      }
+
       if (busqueda) {
         const q = busqueda.toLowerCase()
         return (
@@ -145,15 +184,18 @@ export default function PortalPage() {
       }
       return true
     })
-  }, [equipos, filtroCiudad, filtroUbicacion, busqueda])
+  }, [equipos, filtroCiudad, filtroUbicacion, filtroTipo, filtroFechaDesde, filtroFechaHasta, busqueda, metaPorQr, informesPorQr])
 
   const limpiarFiltros = () => {
     setFiltroCiudad('')
     setFiltroUbicacion('')
+    setFiltroTipo('')
+    setFiltroFechaDesde('')
+    setFiltroFechaHasta('')
     setBusqueda('')
   }
 
-  const hayFiltros = filtroCiudad || filtroUbicacion || busqueda
+  const hayFiltros = filtroCiudad || filtroUbicacion || filtroTipo || filtroFechaDesde || filtroFechaHasta || busqueda
 
   if (loading || !user) return null
 
@@ -207,7 +249,7 @@ export default function PortalPage() {
           </div>
 
           {mostrarFiltros && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-gray-100">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1 border-t border-gray-100">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
                   <Building2 className="w-3 h-3" /> Ciudad
@@ -234,6 +276,44 @@ export default function PortalPage() {
                   <option value="">Todas</option>
                   {ubicaciones.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                  <Cpu className="w-3 h-3" /> Tipo de equipo
+                </label>
+                <select
+                  value={filtroTipo}
+                  onChange={e => setFiltroTipo(e.target.value)}
+                  className="w-full h-9 px-2 border border-gray-200 rounded-md text-sm bg-white"
+                >
+                  <option value="">Todos</option>
+                  {tipos.map(t => <option key={t} value={t}>{TIPO_LABELS[t] ?? t}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Desde
+                </label>
+                <input
+                  type="date"
+                  value={filtroFechaDesde}
+                  onChange={e => setFiltroFechaDesde(e.target.value)}
+                  className="w-full h-9 px-2 border border-gray-200 rounded-md text-sm bg-white"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Hasta
+                </label>
+                <input
+                  type="date"
+                  value={filtroFechaHasta}
+                  onChange={e => setFiltroFechaHasta(e.target.value)}
+                  className="w-full h-9 px-2 border border-gray-200 rounded-md text-sm bg-white"
+                />
               </div>
             </div>
           )}
