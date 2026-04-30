@@ -99,29 +99,31 @@ export default function HistorialTabs({ informes }: { informes: Informe[] }) {
             </div>
           )}
 
-          {/* Descarga de PDF (firmado si aplica) */}
-          {v.pdf_url && (
-            <div className="border-t border-gray-100 mt-3 pt-3 flex items-center gap-2">
-              <a
-                href={v.pdf_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${
-                  v.firmado_at
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-gray-800 hover:bg-gray-700 text-white'
-                }`}
-              >
-                {v.firmado_at ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
-                {v.firmado_at ? 'PDF firmado' : 'Descargar PDF'}
-              </a>
-            </div>
-          )}
+          {/* Descarga de PDF + badge "Último servicio" en la misma línea */}
+          {(v.pdf_url || tab === 0) && (
+            <div className="border-t border-gray-100 mt-3 pt-3 flex items-center justify-between gap-2">
+              {v.pdf_url ? (
+                <a
+                  href={v.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${
+                    v.firmado_at
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-800 hover:bg-gray-700 text-white'
+                  }`}
+                >
+                  {v.firmado_at ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+                  {v.firmado_at ? 'PDF firmado' : 'Descargar PDF'}
+                </a>
+              ) : <span />}
 
-          {tab === 0 && (
-            <span className="inline-block mt-3 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
-              Último servicio
-            </span>
+              {tab === 0 && (
+                <span className="inline-block text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+                  Último servicio
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}
