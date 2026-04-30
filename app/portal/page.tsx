@@ -532,7 +532,11 @@ function ModalSolicitar({
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Error al crear el ticket')
 
-      onCreated('Ticket enviado. El equipo técnico ya fue notificado.')
+      // Reportar estado del email para diagnosticar problemas de notificación
+      const emailMsg = body.email?.ok
+        ? `Ticket enviado. Email notificado a ${body.email.sent_to?.join(', ') ?? 'admin'}.`
+        : `Ticket creado, pero el email al admin falló: ${body.email?.reason ?? 'sin detalle'}`
+      onCreated(emailMsg)
       onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error desconocido')

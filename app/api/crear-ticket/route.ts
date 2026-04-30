@@ -118,12 +118,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Insert: ${insErr?.message || 'desconocido'}` }, { status: 500 })
   }
 
-  // ── Notificar al admin por email (best-effort, no rompe el flujo) ──
-  notificarAdminPorEmail(admin, usuario.empresa_id, ticket, usuario.client_company, usuario.nombre).catch(err =>
-    console.error('email admin error:', err)
-  )
+  // ── Notificar al admin por email — ahora awaiteado para devolver estado ──
+  let emailStatus: { ok: boolean; reason?: string; sent_to?: string[] } = { ok: false, reason: 'not_attempted' }
+  try {
+    emailStatus = await notificarAdminPorEmail(admin, usuario.empresa_id, ticket, usuario.client_company, usuario.nombre)
+  } catch (err) {
+    console.error('[crear-ticket] email error:', err)
+    emailStatus = { ok: false, reason: err instanceof Error ? err.message : 'unknown' }
+  }
 
-  return NextResponse.json({ ok: true, ticket_id: ticket.id })
+  return NextResponse.json({ ok: true, ticket_id: ticket.id, email: emailStatus })
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -133,18 +137,19 @@ async function notificarAdminPorEmail(
   ticket: any,
   clienteEmpresa: string,
   clienteNombre: string,
-) {
+): Promise<{ ok: boolean; reason?: string; sent_to?: string[] }> {
   const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return
+  if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY missing in env' }
 
   // 1) Admins de la empresa
-  const { data: adminUsuarios } = await admin
+  const { data: adminUsuarios, error: adminErr } = await admin
     .from('usuarios')
     .select('id, nombre')
     .eq('empresa_id', empresaId)
     .eq('rol', 'admin')
     .eq('activo', true)
-  if (!adminUsuarios?.length) return
+  if (adminErr) return { ok: false, reason: `query usuarios: ${adminErr.message}` }
+  if (!adminUsuarios?.length) return { ok: false, reason: 'no admin users in empresa' }
 
   // 2) Emails desde auth.users
   const emails: string[] = []
@@ -152,7 +157,7 @@ async function notificarAdminPorEmail(
     const { data } = await admin.auth.admin.getUserById(u.id)
     if (data?.user?.email) emails.push(data.user.email)
   }
-  if (!emails.length) return
+  if (!emails.length) return { ok: false, reason: 'no auth emails for admin users' }
 
   // 3) Empresa name (branding)
   const { data: empresa } = await admin
@@ -170,7 +175,7 @@ async function notificarAdminPorEmail(
   const equipoTexto = [ticket.equipo_marca, ticket.equipo_modelo, ticket.equipo_serial && `S/N ${ticket.equipo_serial}`]
     .filter(Boolean).join(' · ') || '—'
 
-  await resend.emails.send({
+  const { error: sendErr } = await resend.emails.send({
     from: `${empresaNombre} <${verifiedFrom}>`,
     to: emails,
     subject: `[${PRIORIDAD_LABELS[ticket.prioridad] ?? ticket.prioridad}] Nuevo ticket de ${clienteEmpresa} — ${CATEGORIA_LABELS[ticket.categoria]}`,
@@ -207,6 +212,12 @@ async function notificarAdminPorEmail(
       </div>
     `,
   })
+
+  if (sendErr) {
+    console.error('[crear-ticket] Resend error:', JSON.stringify(sendErr))
+    return { ok: false, reason: `Resend: ${sendErr.message}`, sent_to: emails }
+  }
+  return { ok: true, sent_to: emails }
 }
 
 function escapeHtml(s: string) {
