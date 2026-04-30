@@ -601,7 +601,7 @@ export default function AdminPage() {
 
         {/* Consecutivo + Backup en la misma línea */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col">
             <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
               <Hash className="w-4 h-4" /> Consecutivo de informes
             </h2>
@@ -610,7 +610,7 @@ export default function AdminPage() {
               el prefijo del código: <code className="bg-gray-100 px-1 rounded">UPS/26-0001</code>,&nbsp;
               <code className="bg-gray-100 px-1 rounded">AIR/26-0002</code>, etc.
             </p>
-            <div className="flex items-end gap-3">
+            <div className="flex items-end gap-3 mt-auto">
               <div className="flex-1 space-y-1">
                 <Label className="text-xs">Próximo número</Label>
                 <Input
@@ -632,7 +632,7 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col">
             <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
               <DatabaseBackup className="w-4 h-4" /> Backup de datos
             </h2>
@@ -640,24 +640,26 @@ export default function AdminPage() {
               Descarga toda la información de tu empresa en un archivo Excel con cuatro hojas:
               <strong> Clientes</strong>, <strong>Equipos</strong>, <strong>Informes</strong> y <strong>Usuarios</strong>.
             </p>
-            <Button
-              onClick={generarBackup}
-              disabled={generandoBackup}
-              className={`relative overflow-hidden flex items-center gap-2 ${backupOk ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-900'} text-white`}
-            >
-              {generandoBackup && (
-                <span className="absolute inset-0 bg-white/20 transition-all duration-500 rounded-md" style={{ width: `${backupPct}%` }} />
-              )}
-              <span className="relative flex items-center gap-2">
-                {generandoBackup ? (
-                  <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {backupProgreso || 'Generando…'} {backupPct > 0 && `(${backupPct}%)`}</>
-                ) : backupOk ? (
-                  <><CheckCircle className="w-4 h-4" /> ¡Descargado!</>
-                ) : (
-                  <><Download className="w-4 h-4" /> Descargar backup (ZIP + PDFs)</>
+            <div className="mt-auto">
+              <Button
+                onClick={generarBackup}
+                disabled={generandoBackup}
+                className={`relative overflow-hidden flex items-center gap-2 h-9 ${backupOk ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-900'} text-white`}
+              >
+                {generandoBackup && (
+                  <span className="absolute inset-0 bg-white/20 transition-all duration-500 rounded-md" style={{ width: `${backupPct}%` }} />
                 )}
-              </span>
-            </Button>
+                <span className="relative flex items-center gap-2">
+                  {generandoBackup ? (
+                    <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {backupProgreso || 'Generando…'} {backupPct > 0 && `(${backupPct}%)`}</>
+                  ) : backupOk ? (
+                    <><CheckCircle className="w-4 h-4" /> ¡Descargado!</>
+                  ) : (
+                    <><Download className="w-4 h-4" /> Descargar backup (ZIP + PDFs)</>
+                  )}
+                </span>
+              </Button>
+            </div>
           </div>
         </div>
 
