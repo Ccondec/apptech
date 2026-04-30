@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Metadata } from 'next'
 import { CheckCircle, Hash, User, Tag, Cpu, Zap, MapPin, ClipboardList, AlertCircle } from 'lucide-react'
 import HistorialTabs from './HistorialTabs'
+import BackButton from './BackButton'
 import { SUPABASE_URL } from '@/lib/supabase-config'
 
 // Usar service role para que RLS no bloquee la consulta pública del QR
@@ -82,6 +83,7 @@ export default async function EquipoPage({ params }: Props) {
   if (error || !informes || informes.length === 0) {
     return (
       <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+        <BackButton />
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-100 mb-4">
             <AlertCircle className="w-8 h-8 text-red-500" />
@@ -97,6 +99,7 @@ export default async function EquipoPage({ params }: Props) {
 
   return (
     <main className="min-h-screen bg-gray-50 flex flex-col items-center px-4 py-10">
+      <BackButton />
       {/* Header */}
       <div className="w-full max-w-md mb-6 text-center">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-100 mb-3">

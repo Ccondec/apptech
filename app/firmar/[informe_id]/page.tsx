@@ -118,8 +118,8 @@ export default function FirmarPage() {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Error al firmar')
 
-      // 4. Listo — volver al portal
-      alert('Informe firmado correctamente.')
+      // 4. Listo — volver al portal con mensaje de éxito
+      sessionStorage.setItem('toast', 'Informe firmado correctamente.')
       router.push('/portal')
     } catch (e) {
       console.error('handleFirmar:', e)

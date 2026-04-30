@@ -46,6 +46,16 @@ export default function HomePage() {
     return null
   }
 
+  // Si es cliente, no renderizar la pantalla del técnico — el useEffect ya
+  // disparó router.push('/portal'); mostramos loading hasta que navegue.
+  if (user.rol === 'cliente' || mustChangePassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-10 h-10 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">

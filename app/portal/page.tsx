@@ -45,6 +45,7 @@ export default function PortalPage() {
   const [equipos, setEquipos] = useState<Equipo[]>([])
   const [informes, setInformes] = useState<InformeMin[]>([])
   const [cargando, setCargando] = useState(true)
+  const [toast, setToast] = useState<string | null>(null)
 
   // Filtros (los mismos que ya existían, adaptados a equipos)
   const [busqueda, setBusqueda] = useState('')
@@ -66,6 +67,14 @@ export default function PortalPage() {
   useEffect(() => {
     if (!user || user.rol !== 'cliente' || !user.client_company) return
     cargarDatos()
+
+    // Toast desde sessionStorage (ej. tras firmar un informe)
+    const msg = typeof window !== 'undefined' ? sessionStorage.getItem('toast') : null
+    if (msg) {
+      sessionStorage.removeItem('toast')
+      setToast(msg)
+      setTimeout(() => setToast(null), 3500)
+    }
   }, [user])
 
   const cargarDatos = async () => {
@@ -203,6 +212,13 @@ export default function PortalPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-in fade-in slide-in-from-top-2">
+          ✓ {toast}
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
