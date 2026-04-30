@@ -80,6 +80,35 @@ export interface EquipoRecord {
   client_phone?: string
 }
 
+export type TicketCategoria = 'averia' | 'mantenimiento' | 'consulta'
+export type TicketPrioridad = 'alta' | 'media' | 'baja'
+export type TicketEstado = 'nuevo' | 'asignado' | 'en_proceso' | 'resuelto' | 'cerrado'
+
+export interface TicketRecord {
+  id: string
+  empresa_id: string
+  client_id?: string | null
+  cliente: string
+  equipo_id?: string | null
+  qr_code?: string | null
+  equipo_marca?: string | null
+  equipo_modelo?: string | null
+  equipo_serial?: string | null
+  equipo_ubicacion?: string | null
+  categoria: TicketCategoria
+  prioridad: TicketPrioridad
+  descripcion: string
+  preferencia_horario?: string | null
+  foto_url?: string | null
+  estado: TicketEstado
+  asignado_a?: string | null
+  creado_por?: string | null
+  resolucion?: string | null
+  resuelto_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ── Auth helpers ──────────────────────────────────────────────
 
 export async function solicitarRecuperacion(email: string): Promise<{ ok: boolean; error?: string }> {

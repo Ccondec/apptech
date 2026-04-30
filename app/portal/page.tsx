@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import {
   LogOut, Search, Filter, X, MapPin, Cpu, Settings2, Calendar,
-  PenLine, History, Send, ChevronRight,
+  PenLine, History, Send, ChevronRight, Loader2,
 } from 'lucide-react'
 
 interface Equipo {
@@ -428,11 +428,15 @@ export default function PortalPage() {
         />
       )}
 
-      {/* Modal Solicitar servicio — stub */}
+      {/* Modal Solicitar servicio */}
       {modalSolicitar && (
         <ModalSolicitar
           equipo={modalSolicitar}
           onClose={() => setModalSolicitar(null)}
+          onCreated={(msg) => {
+            setToast(msg)
+            setTimeout(() => setToast(null), 4000)
+          }}
         />
       )}
     </div>
@@ -489,37 +493,181 @@ function ModalFirmar({
   )
 }
 
-// ── Modal: Solicitar servicio (stub) ───────────────────────────────────────
+// ── Modal: Solicitar servicio (crea ticket real) ───────────────────────────
 function ModalSolicitar({
-  equipo, onClose,
-}: { equipo: Equipo; onClose: () => void }) {
+  equipo, onClose, onCreated,
+}: { equipo: Equipo; onClose: () => void; onCreated: (msg: string) => void }) {
+  const [categoria, setCategoria] = useState<'averia' | 'mantenimiento' | 'consulta'>('averia')
+  const [prioridad, setPrioridad] = useState<'alta' | 'media' | 'baja'>('media')
+  const [descripcion, setDescripcion] = useState('')
+  const [horario, setHorario] = useState('')
+  const [foto, setFoto] = useState<File | null>(null)
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async () => {
+    setError(null)
+    if (descripcion.trim().length < 10) {
+      setError('La descripción debe tener al menos 10 caracteres.')
+      return
+    }
+    setEnviando(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Sesión expirada — recargá la página')
+
+      const fd = new FormData()
+      fd.append('equipo_id', equipo.id)
+      fd.append('categoria', categoria)
+      fd.append('prioridad', prioridad)
+      fd.append('descripcion', descripcion.trim())
+      if (horario.trim()) fd.append('preferencia_horario', horario.trim())
+      if (foto) fd.append('foto', foto)
+
+      const res = await fetch('/api/crear-ticket', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: fd,
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || 'Error al crear el ticket')
+
+      onCreated('Ticket enviado. El equipo técnico ya fue notificado.')
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div className="min-w-0">
             <p className="font-semibold text-gray-800">Solicitar servicio</p>
-            <p className="text-xs text-gray-500">{equipo.brand} {equipo.model} · {equipo.serial}</p>
+            <p className="text-xs text-gray-500 truncate">{equipo.brand} {equipo.model} · {equipo.serial}</p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100">
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100 flex-shrink-0">
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
-        <div className="p-6 text-center space-y-3">
-          <div className="w-12 h-12 rounded-full bg-gray-100 mx-auto flex items-center justify-center">
-            <Send className="w-6 h-6 text-gray-500" />
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Categoría */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Tipo de solicitud</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'averia',         label: 'Avería' },
+                { id: 'mantenimiento',  label: 'Mantenimiento' },
+                { id: 'consulta',       label: 'Consulta' },
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setCategoria(opt.id as any)}
+                  className={`px-2 py-2 text-xs font-medium rounded-lg border transition-colors ${
+                    categoria === opt.id
+                      ? 'bg-gray-800 text-white border-gray-800'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <p className="text-sm font-medium text-gray-800">Sistema de tickets en desarrollo</p>
-          <p className="text-xs text-gray-500">
-            Pronto podrás reportar emergencias y solicitar servicio técnico directamente desde el portal.
-            Por ahora, contactá al equipo técnico por los canales habituales.
-          </p>
+
+          {/* Prioridad */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Prioridad</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'alta',  label: '🔴 Alta',  cls: 'bg-red-50 text-red-700 border-red-200' },
+                { id: 'media', label: '🟡 Media', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                { id: 'baja',  label: '🟢 Baja',  cls: 'bg-green-50 text-green-700 border-green-200' },
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setPrioridad(opt.id as any)}
+                  className={`px-2 py-2 text-xs font-medium rounded-lg border transition-colors ${
+                    prioridad === opt.id
+                      ? opt.cls + ' ring-2 ring-offset-1'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Descripción */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">
+              Descripción del problema <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={descripcion}
+              onChange={e => setDescripcion(e.target.value)}
+              rows={4}
+              placeholder="Contanos qué está pasando con el equipo (mín 10 caracteres)…"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+            />
+            <p className="text-[11px] text-gray-400 mt-0.5">{descripcion.length} caracteres</p>
+          </div>
+
+          {/* Preferencia de horario */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Preferencia de horario (opcional)</label>
+            <input
+              type="text"
+              value={horario}
+              onChange={e => setHorario(e.target.value)}
+              placeholder="Ej: cualquier día entre 8am-2pm, lunes después de las 3pm…"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+
+          {/* Foto */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Foto del equipo o del problema (opcional)</label>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={e => setFoto(e.target.files?.[0] ?? null)}
+              className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+            />
+            {foto && <p className="text-[11px] text-gray-500 mt-1">📎 {foto.name} ({Math.round(foto.size / 1024)}KB)</p>}
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">{error}</div>
+          )}
         </div>
 
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-md">
-            Cerrar
+        <div className="px-5 py-3 border-t border-gray-100 flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={onClose}
+            disabled={enviando}
+            className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={enviando || descripcion.trim().length < 10}
+            className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-600 hover:bg-green-700 text-white font-medium text-sm rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {enviando ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Enviando…</>
+            ) : (
+              <><Send className="w-4 h-4" /> Enviar solicitud</>
+            )}
           </button>
         </div>
       </div>

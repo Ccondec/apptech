@@ -6,7 +6,7 @@ import { supabase, getSession, Usuario, importarClientes, importarEquipos, setCo
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup, ClipboardList, SendHorizonal, Trash2 } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, UserX, RefreshCw, Copy, CheckCircle, Settings, Link2, FileText, Upload, Hash, Download, DatabaseBackup, ClipboardList, SendHorizonal, Trash2, Inbox } from 'lucide-react'
 import { crearFormToken, listarFormTokens, desactivarFormToken, FormToken, crearAsignacion, listarAsignaciones, cancelarAsignacion, Asignacion } from '@/lib/supabase'
 import { getFormUrl, getAsignacionUrl } from '@/lib/site-url'
 
@@ -481,6 +481,9 @@ export default function AdminPage() {
           <h1 className="text-lg font-semibold text-gray-800">Panel de Administración</h1>
           <span className="text-sm text-gray-400 ml-1">— {user.empresa?.nombre}</span>
           <div className="ml-auto flex items-center gap-2">
+            <Button onClick={() => router.push('/admin/tickets')} className="bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center gap-2">
+              <Inbox className="w-4 h-4" /> Tickets
+            </Button>
             <Button onClick={() => router.push('/admin/informes')} className="bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center gap-2">
               <FileText className="w-4 h-4" /> Informes
             </Button>
