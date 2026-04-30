@@ -41,3 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env*.local
+
+# claude code (local scratch / worktrees)
+.claude/
+URLS.md
