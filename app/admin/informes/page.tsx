@@ -603,45 +603,37 @@ export default function InformesPage() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="hidden sm:grid grid-cols-[1fr_1.2fr_1fr_0.7fr_0.7fr_auto_auto] gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              <span>N° / Fecha</span><span>Cliente</span><span>Técnico</span><span>Equipo</span><span>Tipo</span><span>Firma</span><span>PDF</span>
+            <div className="hidden sm:grid grid-cols-[110px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_90px_120px] gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <span>N° / Fecha</span><span>Cliente</span><span>Técnico</span><span>Equipo</span><span>Tipo</span><span className="text-right">PDF</span>
             </div>
             <div className="divide-y divide-gray-50">
               {informes.map(inf => (
-                <div key={inf.id} className="grid grid-cols-1 sm:grid-cols-[1fr_1.2fr_1fr_0.7fr_0.7fr_auto_auto] gap-1 sm:gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
-                  <div>
-                    <p className="text-xs font-bold text-blue-700">{inf.numero_informe ?? inf.reporte_numero ?? '—'}</p>
+                <div key={inf.id} className="grid grid-cols-1 sm:grid-cols-[110px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_90px_120px] gap-1 sm:gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-blue-700 truncate">{inf.numero_informe ?? inf.reporte_numero ?? '—'}</p>
                     <p className="text-[11px] text-gray-400">{inf.fecha}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-800 truncate">{inf.cliente || '—'}</p>
-                    {inf.serial && <p className="text-[11px] text-gray-400">S/N: {inf.serial}</p>}
+                    {inf.serial && <p className="text-[11px] text-gray-400 truncate">S/N: {inf.serial}</p>}
                   </div>
-                  <p className="text-sm text-gray-700 truncate self-center">{inf.tecnico ?? '—'}</p>
-                  <div className="self-center">
+                  <p className="text-sm text-gray-700 truncate self-center min-w-0">{inf.tecnico ?? '—'}</p>
+                  <div className="self-center min-w-0">
                     <p className="text-xs text-gray-700 truncate">{[inf.marca, inf.modelo].filter(Boolean).join(' ') || '—'}</p>
-                    {inf.capacidad && <p className="text-[11px] text-gray-400">{inf.capacidad}</p>}
+                    {inf.capacidad && <p className="text-[11px] text-gray-400 truncate">{inf.capacidad}</p>}
                   </div>
-                  <p className="text-xs text-gray-500 capitalize self-center">{inf.tipo_reporte ?? '—'}</p>
-                  <div className="self-center">
-                    {inf.firmado_at ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-medium" title={`Firmado ${new Date(inf.firmado_at).toLocaleString('es-CO')}`}>
-                        <CheckCircle2 className="w-3 h-3" /> Firmado
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-gray-400">Pendiente</span>
-                    )}
-                  </div>
-                  <div className="self-center">
+                  <p className="text-xs text-gray-500 capitalize self-center truncate">{inf.tipo_reporte ?? '—'}</p>
+                  <div className="self-center justify-self-end">
                     {inf.pdf_url ? (
                       <a href={inf.pdf_url} target="_blank" rel="noopener noreferrer"
-                        className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg transition-colors font-medium ${
+                        className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg transition-colors font-medium whitespace-nowrap ${
                           inf.firmado_at
                             ? 'bg-green-600 hover:bg-green-700 text-white'
                             : 'bg-blue-50 hover:bg-blue-100 text-blue-600'
                         }`}
-                        title={inf.firmado_at ? 'PDF con firma del cliente' : 'Descargar PDF'}>
-                        <Download className="w-3.5 h-3.5" /> PDF
+                        title={inf.firmado_at ? `Firmado ${new Date(inf.firmado_at).toLocaleString('es-CO')}` : 'Descargar PDF (pendiente de firma)'}>
+                        {inf.firmado_at ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+                        {inf.firmado_at ? 'Firmado' : 'Pendiente'}
                       </a>
                     ) : <span className="text-[11px] text-gray-300">—</span>}
                   </div>
