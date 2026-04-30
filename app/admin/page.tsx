@@ -25,6 +25,7 @@ export default function AdminPage() {
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   const [createSuccess, setCreateSuccess] = useState(false)
+  const [showCrearUsuarioModal, setShowCrearUsuarioModal] = useState(false)
 
   const [tokens, setTokens] = useState<FormToken[]>([])
   const [tokenDesc, setTokenDesc] = useState('')
@@ -497,38 +498,6 @@ export default function AdminPage() {
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
 
 
-        {/* Consecutivo de informes */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
-            <Hash className="w-4 h-4" /> Consecutivo de informes
-          </h2>
-          <p className="text-xs text-gray-400 mb-4">
-            Número único compartido por todos los tipos de servicio. El tipo diferencia
-            el prefijo del código: <code className="bg-gray-100 px-1 rounded">UPS/26-0001</code>,&nbsp;
-            <code className="bg-gray-100 px-1 rounded">AIR/26-0002</code>, etc.
-          </p>
-          <div className="flex items-end gap-3 max-w-xs">
-            <div className="flex-1 space-y-1">
-              <Label className="text-xs">Próximo número</Label>
-              <Input
-                type="number"
-                min="1"
-                placeholder="1"
-                value={consecValue}
-                onChange={e => setConsecValue(e.target.value)}
-                className="text-sm h-9"
-              />
-            </div>
-            <Button
-              onClick={guardarConsecutivo}
-              disabled={consecSaving}
-              className={`h-9 px-4 text-sm ${consecSaved ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-800'} text-white`}
-            >
-              {consecSaved ? <CheckCircle className="w-4 h-4" /> : 'Guardar'}
-            </Button>
-          </div>
-        </div>
-
         {/* Importar desde Excel */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
@@ -630,33 +599,66 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Backup */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
-            <DatabaseBackup className="w-4 h-4" /> Backup de datos
-          </h2>
-          <p className="text-xs text-gray-400 mb-5">
-            Descarga toda la información de tu empresa en un archivo Excel con cuatro hojas:
-            <strong> Clientes</strong>, <strong>Equipos</strong>, <strong>Informes</strong> y <strong>Usuarios</strong>.
-          </p>
-          <Button
-            onClick={generarBackup}
-            disabled={generandoBackup}
-            className={`relative overflow-hidden flex items-center gap-2 ${backupOk ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-900'} text-white`}
-          >
-            {generandoBackup && (
-              <span className="absolute inset-0 bg-white/20 transition-all duration-500 rounded-md" style={{ width: `${backupPct}%` }} />
-            )}
-            <span className="relative flex items-center gap-2">
-              {generandoBackup ? (
-                <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {backupProgreso || 'Generando…'} {backupPct > 0 && `(${backupPct}%)`}</>
-              ) : backupOk ? (
-                <><CheckCircle className="w-4 h-4" /> ¡Descargado!</>
-              ) : (
-                <><Download className="w-4 h-4" /> Descargar backup (ZIP + PDFs)</>
+        {/* Consecutivo + Backup en la misma línea */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
+              <Hash className="w-4 h-4" /> Consecutivo de informes
+            </h2>
+            <p className="text-xs text-gray-400 mb-4">
+              Número único compartido por todos los tipos de servicio. El tipo diferencia
+              el prefijo del código: <code className="bg-gray-100 px-1 rounded">UPS/26-0001</code>,&nbsp;
+              <code className="bg-gray-100 px-1 rounded">AIR/26-0002</code>, etc.
+            </p>
+            <div className="flex items-end gap-3">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">Próximo número</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="1"
+                  value={consecValue}
+                  onChange={e => setConsecValue(e.target.value)}
+                  className="text-sm h-9"
+                />
+              </div>
+              <Button
+                onClick={guardarConsecutivo}
+                disabled={consecSaving}
+                className={`h-9 px-4 text-sm ${consecSaved ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-800'} text-white`}
+              >
+                {consecSaved ? <CheckCircle className="w-4 h-4" /> : 'Guardar'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
+              <DatabaseBackup className="w-4 h-4" /> Backup de datos
+            </h2>
+            <p className="text-xs text-gray-400 mb-5">
+              Descarga toda la información de tu empresa en un archivo Excel con cuatro hojas:
+              <strong> Clientes</strong>, <strong>Equipos</strong>, <strong>Informes</strong> y <strong>Usuarios</strong>.
+            </p>
+            <Button
+              onClick={generarBackup}
+              disabled={generandoBackup}
+              className={`relative overflow-hidden flex items-center gap-2 ${backupOk ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-900'} text-white`}
+            >
+              {generandoBackup && (
+                <span className="absolute inset-0 bg-white/20 transition-all duration-500 rounded-md" style={{ width: `${backupPct}%` }} />
               )}
-            </span>
-          </Button>
+              <span className="relative flex items-center gap-2">
+                {generandoBackup ? (
+                  <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {backupProgreso || 'Generando…'} {backupPct > 0 && `(${backupPct}%)`}</>
+                ) : backupOk ? (
+                  <><CheckCircle className="w-4 h-4" /> ¡Descargado!</>
+                ) : (
+                  <><Download className="w-4 h-4" /> Descargar backup (ZIP + PDFs)</>
+                )}
+              </span>
+            </Button>
+          </div>
         </div>
 
         {/* Usuarios */}
@@ -665,9 +667,20 @@ export default function AdminPage() {
             <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2">
               <Users className="w-4 h-4" /> Usuarios ({usuarios.length})
             </h2>
-            <button onClick={cargarUsuarios} className="text-gray-400 hover:text-gray-600">
-              <RefreshCw className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setCreateError(''); setCreateSuccess(false)
+                  setShowCrearUsuarioModal(true)
+                }}
+                className="flex items-center gap-1 text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium"
+              >
+                <UserCheck className="w-3.5 h-3.5" /> Adicionar usuario
+              </button>
+              <button onClick={cargarUsuarios} className="text-gray-400 hover:text-gray-600" title="Recargar lista">
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {loadingUsers ? (
@@ -708,94 +721,6 @@ export default function AdminPage() {
               ))}
             </div>
           )}
-        </div>
-
-        {/* Crear usuario */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Invitar técnico</h2>
-          <p className="text-xs text-gray-400 mb-4">
-            Comparte la clave de licencia para que el técnico se registre él mismo, o créale la cuenta aquí.
-          </p>
-          <form onSubmit={crearUsuario} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label htmlFor="newNombre">Nombre</Label>
-              <Input id="newNombre" value={newUserNombre} onChange={e => setNewUserNombre(e.target.value)} placeholder="Nombre completo" required />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="newEmail">Correo</Label>
-              <Input id="newEmail" type="email" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} placeholder="correo@empresa.com" required />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="newPass">Contraseña temporal</Label>
-              <Input id="newPass" type="password" value={newUserPass} onChange={e => setNewUserPass(e.target.value)} placeholder="Mínimo 6 caracteres" required />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="newRol">Rol</Label>
-              <select
-                id="newRol"
-                value={newUserRol}
-                onChange={e => setNewUserRol(e.target.value as 'tecnico' | 'admin' | 'cliente')}
-                className="w-full h-10 border border-gray-200 rounded-md px-3 text-sm bg-white"
-              >
-                <option value="tecnico">Técnico</option>
-                <option value="admin">Administrador</option>
-                <option value="cliente">Cliente (portal)</option>
-              </select>
-            </div>
-            {newUserRol === 'cliente' && (
-              <div className="col-span-2 space-y-1">
-                <Label htmlFor="newClientCompany">Empresa del cliente</Label>
-                <div className="relative">
-                  <Input
-                    id="newClientCompany"
-                    value={clienteSearch}
-                    onChange={e => {
-                      setClienteSearch(e.target.value)
-                      setNewUserClientCompany(e.target.value)
-                      if (!e.target.value) setShowClienteDropdown(false)
-                    }}
-                    onFocus={() => clienteResults.length > 0 && setShowClienteDropdown(true)}
-                    onBlur={() => setTimeout(() => setShowClienteDropdown(false), 150)}
-                    placeholder="Buscar empresa del cliente…"
-                    autoComplete="off"
-                    required
-                  />
-                  {clienteSearching && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                  )}
-                  {showClienteDropdown && clienteResults.length > 0 && (
-                    <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
-                      {clienteResults.map(c => (
-                        <li
-                          key={c.id}
-                          onMouseDown={() => seleccionarCliente(c)}
-                          className="px-3 py-2.5 cursor-pointer hover:bg-gray-50 border-b border-gray-50 last:border-0"
-                        >
-                          <p className="text-sm font-medium text-gray-800">{c.company}</p>
-                          {(c.contact || c.city) && (
-                            <p className="text-xs text-gray-400">{[c.contact, c.city].filter(Boolean).join(' · ')}</p>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {showClienteDropdown && clienteResults.length === 0 && clienteSearch.trim().length > 1 && !clienteSearching && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2.5">
-                      <p className="text-sm text-gray-400">No se encontraron clientes</p>
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-gray-400">Escribe para buscar · el nombre debe coincidir con el usado en los informes.</p>
-              </div>
-            )}
-            {createError && <p className="col-span-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{createError}</p>}
-            {createSuccess && <p className="col-span-2 text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">✓ Usuario creado exitosamente.</p>}
-            <div className="col-span-2">
-              <Button type="submit" disabled={creating} className="bg-green-600 hover:bg-green-700 text-white">
-                {creating ? 'Creando…' : 'Crear usuario'}
-              </Button>
-            </div>
-          </form>
         </div>
 
         {/* Enlace para técnico externo */}
@@ -1039,6 +964,122 @@ export default function AdminPage() {
         </div>
 
       </main>
+
+      {/* Modal: Adicionar usuario */}
+      {showCrearUsuarioModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowCrearUsuarioModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <UserCheck className="w-4 h-4" /> Adicionar usuario
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Crea técnicos, administradores o clientes con acceso al portal.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCrearUsuarioModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-100"
+                title="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                await crearUsuario(e)
+                // Cerrar modal solo si se creó exitosamente
+                if (!createError) setTimeout(() => setShowCrearUsuarioModal(false), 1200)
+              }}
+              className="flex-1 overflow-y-auto p-5 grid grid-cols-1 sm:grid-cols-2 gap-4"
+            >
+              <div className="space-y-1">
+                <Label htmlFor="newNombre">Nombre</Label>
+                <Input id="newNombre" value={newUserNombre} onChange={e => setNewUserNombre(e.target.value)} placeholder="Nombre completo" required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="newEmail">Correo</Label>
+                <Input id="newEmail" type="email" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} placeholder="correo@empresa.com" required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="newPass">Contraseña temporal</Label>
+                <Input id="newPass" type="password" value={newUserPass} onChange={e => setNewUserPass(e.target.value)} placeholder="Mínimo 6 caracteres" required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="newRol">Rol</Label>
+                <select
+                  id="newRol"
+                  value={newUserRol}
+                  onChange={e => setNewUserRol(e.target.value as 'tecnico' | 'admin' | 'cliente')}
+                  className="w-full h-10 border border-gray-200 rounded-md px-3 text-sm bg-white"
+                >
+                  <option value="tecnico">Técnico</option>
+                  <option value="admin">Administrador</option>
+                  <option value="cliente">Cliente (portal)</option>
+                </select>
+              </div>
+              {newUserRol === 'cliente' && (
+                <div className="col-span-1 sm:col-span-2 space-y-1">
+                  <Label htmlFor="newClientCompany">Empresa del cliente</Label>
+                  <div className="relative">
+                    <Input
+                      id="newClientCompany"
+                      value={clienteSearch}
+                      onChange={e => {
+                        setClienteSearch(e.target.value)
+                        setNewUserClientCompany(e.target.value)
+                        if (!e.target.value) setShowClienteDropdown(false)
+                      }}
+                      onFocus={() => clienteResults.length > 0 && setShowClienteDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowClienteDropdown(false), 150)}
+                      placeholder="Buscar empresa del cliente…"
+                      autoComplete="off"
+                      required
+                    />
+                    {clienteSearching && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    )}
+                    {showClienteDropdown && clienteResults.length > 0 && (
+                      <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                        {clienteResults.map(c => (
+                          <li
+                            key={c.id}
+                            onMouseDown={() => seleccionarCliente(c)}
+                            className="px-3 py-2.5 cursor-pointer hover:bg-gray-50 border-b border-gray-50 last:border-0"
+                          >
+                            <p className="text-sm font-medium text-gray-800">{c.company}</p>
+                            {(c.contact || c.city) && (
+                              <p className="text-xs text-gray-400">{[c.contact, c.city].filter(Boolean).join(' · ')}</p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {showClienteDropdown && clienteResults.length === 0 && clienteSearch.trim().length > 1 && !clienteSearching && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2.5">
+                        <p className="text-sm text-gray-400">No se encontraron clientes</p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400">Escribe para buscar · el nombre debe coincidir con el usado en los informes.</p>
+                </div>
+              )}
+              {createError && <p className="col-span-1 sm:col-span-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{createError}</p>}
+              {createSuccess && <p className="col-span-1 sm:col-span-2 text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">✓ Usuario creado exitosamente.</p>}
+              <div className="col-span-1 sm:col-span-2 flex justify-end gap-2 pt-2 border-t border-gray-100">
+                <Button type="button" onClick={() => setShowCrearUsuarioModal(false)} disabled={creating} className="bg-gray-100 hover:bg-gray-200 text-gray-700">
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={creating} className="bg-green-600 hover:bg-green-700 text-white">
+                  {creating ? 'Creando…' : 'Crear usuario'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
