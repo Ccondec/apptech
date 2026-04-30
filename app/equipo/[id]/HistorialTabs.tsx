@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { ClipboardList } from 'lucide-react'
+import { ClipboardList, Download, CheckCircle2 } from 'lucide-react'
 
 interface Informe {
   id: string
@@ -12,6 +12,8 @@ interface Informe {
   ubicacion?: string
   observaciones?: string
   recomendaciones?: string
+  pdf_url?: string | null
+  pdf_firmado_url?: string | null
 }
 
 const fmtFecha = (fecha?: string) => {
@@ -93,6 +95,36 @@ export default function HistorialTabs({ informes }: { informes: Informe[] }) {
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Recomendaciones</p>
                   <p className="text-xs text-gray-700 leading-relaxed">{v.recomendaciones}</p>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Descargas de PDF */}
+          {(v.pdf_url || v.pdf_firmado_url) && (
+            <div className="border-t border-gray-100 mt-3 pt-3 flex flex-wrap items-center gap-2">
+              {v.pdf_firmado_url && (
+                <a
+                  href={v.pdf_firmado_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-md"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" /> PDF firmado
+                </a>
+              )}
+              {v.pdf_url && (
+                <a
+                  href={v.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${
+                    v.pdf_firmado_url
+                      ? 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                      : 'bg-gray-800 hover:bg-gray-700 text-white'
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5" /> {v.pdf_firmado_url ? 'PDF original' : 'Descargar PDF'}
+                </a>
               )}
             </div>
           )}
