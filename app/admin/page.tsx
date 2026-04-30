@@ -709,7 +709,7 @@ export default function AdminPage() {
                         Activo
                       </span>
                     )}
-                    {u.id !== user.id && (
+                    {u.id !== user.id ? (
                       <button
                         onClick={() => eliminarUsuario(u)}
                         className="text-gray-300 hover:text-red-500"
@@ -717,6 +717,8 @@ export default function AdminPage() {
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
+                    ) : (
+                      <span className="w-4 h-4" aria-hidden="true" />
                     )}
                   </div>
                 </div>
