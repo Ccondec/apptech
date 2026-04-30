@@ -17,7 +17,6 @@ interface Equipo {
   serial: string | null
   capacity: string | null
   ubicacion: string | null
-  client_city: string | null
 }
 
 interface InformeMin {
@@ -25,6 +24,7 @@ interface InformeMin {
   qr_code: string
   numero_informe: string | null
   tipo_reporte: string | null
+  ciudad: string | null
   created_at: string
   pdf_url: string | null
 }
@@ -88,24 +88,27 @@ export default function PortalPage() {
       return
     }
 
-    // 2) Equipos del cliente
-    const [{ data: eqs }, { data: infs }] = await Promise.all([
+    // 2) Equipos del cliente + informes en paralelo
+    const [resEq, resInf] = await Promise.all([
       supabase
         .from('equipos')
-        .select('id, qr_code, brand, model, serial, capacity, ubicacion, client_city')
+        .select('id, qr_code, brand, model, serial, capacity, ubicacion')
         .eq('empresa_id', user!.empresa_id)
         .eq('client_id', cliente.id)
         .order('ubicacion', { ascending: true }),
       supabase
         .from('informes')
-        .select('id, qr_code, numero_informe, tipo_reporte, created_at, pdf_url')
+        .select('id, qr_code, numero_informe, tipo_reporte, ciudad, created_at, pdf_url')
         .eq('empresa_id', user!.empresa_id)
         .eq('cliente', user!.client_company)
         .order('created_at', { ascending: false }),
     ])
 
-    setEquipos((eqs as Equipo[]) ?? [])
-    setInformes((infs as InformeMin[]) ?? [])
+    if (resEq.error) console.error('Error cargando equipos:', resEq.error)
+    if (resInf.error) console.error('Error cargando informes:', resInf.error)
+
+    setEquipos((resEq.data as Equipo[]) ?? [])
+    setInformes((resInf.data as InformeMin[]) ?? [])
     setCargando(false)
   }
 
@@ -121,9 +124,9 @@ export default function PortalPage() {
     return map
   }, [informes])
 
-  // Por equipo: tipo (más frecuente entre sus informes) y última fecha
+  // Por equipo: tipo, última fecha y ciudad (todo derivado de sus informes)
   const metaPorQr = useMemo(() => {
-    const map = new Map<string, { tipo?: string; lastDate?: string }>()
+    const map = new Map<string, { tipo?: string; lastDate?: string; ciudad?: string }>()
     for (const [qr, infs] of informesPorQr) {
       // Tipo más frecuente
       const counts = new Map<string, number>()
@@ -132,20 +135,23 @@ export default function PortalPage() {
       }
       const tipo = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
       const lastDate = infs[0]?.created_at // ya vienen ordenados desc
-      map.set(qr, { tipo, lastDate })
+      const ciudad = infs.find(i => i.ciudad)?.ciudad ?? undefined
+      map.set(qr, { tipo, lastDate, ciudad })
     }
     return map
   }, [informesPorQr])
 
   // Opciones únicas para filtros
   const ciudades = useMemo(
-    () => [...new Set(equipos.map(e => e.client_city).filter(Boolean) as string[])].sort(),
-    [equipos]
+    () => [...new Set([...metaPorQr.values()].map(m => m.ciudad).filter(Boolean) as string[])].sort(),
+    [metaPorQr]
   )
   const ubicaciones = useMemo(() => {
-    const base = filtroCiudad ? equipos.filter(e => e.client_city === filtroCiudad) : equipos
+    const base = filtroCiudad
+      ? equipos.filter(e => metaPorQr.get(e.qr_code)?.ciudad === filtroCiudad)
+      : equipos
     return [...new Set(base.map(e => e.ubicacion).filter(Boolean) as string[])].sort()
-  }, [equipos, filtroCiudad])
+  }, [equipos, filtroCiudad, metaPorQr])
   const tipos = useMemo(
     () => [...new Set([...metaPorQr.values()].map(m => m.tipo).filter(Boolean) as string[])].sort(),
     [metaPorQr]
@@ -154,10 +160,9 @@ export default function PortalPage() {
   // Equipos filtrados
   const equiposFiltrados = useMemo(() => {
     return equipos.filter(eq => {
-      if (filtroCiudad && eq.client_city !== filtroCiudad) return false
-      if (filtroUbicacion && eq.ubicacion !== filtroUbicacion) return false
-
       const meta = metaPorQr.get(eq.qr_code)
+      if (filtroCiudad && meta?.ciudad !== filtroCiudad) return false
+      if (filtroUbicacion && eq.ubicacion !== filtroUbicacion) return false
       if (filtroTipo && meta?.tipo !== filtroTipo) return false
 
       if (filtroFechaDesde || filtroFechaHasta) {
@@ -347,6 +352,7 @@ export default function PortalPage() {
             {equiposFiltrados.map(eq => {
               const infs = informesPorQr.get(eq.qr_code) ?? []
               const countInformes = infs.length
+              const ciudad = metaPorQr.get(eq.qr_code)?.ciudad
               return (
                 <div key={eq.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col sm:flex-row sm:items-center gap-3">
                   {/* Info del equipo */}
@@ -370,9 +376,9 @@ export default function PortalPage() {
                             <MapPin className="w-3 h-3" />{eq.ubicacion}
                           </span>
                         )}
-                        {eq.client_city && (
+                        {ciudad && (
                           <span className="text-xs text-gray-500 flex items-center gap-0.5">
-                            <Building2 className="w-3 h-3" />{eq.client_city}
+                            <Building2 className="w-3 h-3" />{ciudad}
                           </span>
                         )}
                       </div>
