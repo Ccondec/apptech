@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
-import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, actualizarPdfUrl, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, siguienteNumeroInforme, formatearNumeroInforme, obtenerNumeroActual, siguienteQrEquipo, buscarEquipoPorSerial, validarEmailCliente, listarMarcas, ClienteRecord, EquipoRecord, InformeRecord, MarcaRecord } from '@/lib/supabase'
+import { buscarClientes, buscarEquipos, guardarCliente, guardarEquipo, guardarInforme, actualizarPdfUrl, actualizarFirmaPos, getEmpresaConfig, listarHistorialEquipo, uploadReportePdf, siguienteNumeroInforme, formatearNumeroInforme, obtenerNumeroActual, siguienteQrEquipo, buscarEquipoPorSerial, validarEmailCliente, listarMarcas, ClienteRecord, EquipoRecord, InformeRecord, MarcaRecord } from '@/lib/supabase'
 import { queueInforme } from '@/lib/offline-queue'
 import AireParams from './AireParams'
 import PlantaParams from './PlantaParams'
@@ -2997,7 +2997,11 @@ yPosition += 8;
     pdf.setFontSize(10);
     pdf.setFont('helvetica', 'bold');
     pdf.text('Firma del Cliente', margin, yPosition);
-    
+
+    // Captura posición de la zona de firma del cliente para que pueda
+    // estampar después desde el portal (solo si quedó vacía).
+    let firmaPos: { page: number; x_mm: number; y_mm: number; w_mm: number; h_mm: number; page_w_mm: number; page_h_mm: number } | null = null;
+
     if (formData.clientSignature) {
       try {
         pdf.addImage(formData.clientSignature, 'PNG', margin, yPosition + 5, signatureWidth, signatureHeight);
@@ -3013,6 +3017,20 @@ yPosition += 8;
       pdf.setLineWidth(0.5);
       pdf.setDrawColor(150, 150, 150); // Gray border
       pdf.rect(margin, yPosition + 5, signatureWidth, signatureHeight);
+
+      // Solo capturamos firma_pos si la firma quedó pendiente
+      const currentPage = (pdf.internal as any).getCurrentPageInfo?.().pageNumber
+        ?? (pdf.internal as any).getNumberOfPages?.()
+        ?? 1;
+      firmaPos = {
+        page: currentPage,
+        x_mm: margin,
+        y_mm: yPosition + 5,
+        w_mm: signatureWidth,
+        h_mm: signatureHeight,
+        page_w_mm: 210,
+        page_h_mm: 297,
+      };
     }
     
     pdf.setFontSize(8);
@@ -3068,6 +3086,11 @@ yPosition += 8;
         pdfUrl = await uploadReportePdf(arrayBuffer, empresaId, filename)
         if (pdfUrl && savedInformeId) {
           actualizarPdfUrl(savedInformeId, pdfUrl).catch(() => {})
+        }
+        // Si la firma quedó pendiente, persistir la posición para que
+        // el cliente pueda firmar después desde el portal.
+        if (firmaPos && savedInformeId) {
+          actualizarFirmaPos(savedInformeId, firmaPos).catch(() => {})
         }
       } catch { /* Storage opcional */ }
     }

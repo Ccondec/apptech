@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import {
   LogOut, Search, Filter, X, Building2, MapPin, Cpu, Settings2, Calendar,
-  PenLine, History, Send, ChevronRight, AlertCircle,
+  PenLine, History, Send, ChevronRight,
 } from 'lucide-react'
 
 interface Equipo {
@@ -471,9 +471,10 @@ function ModalFirmar({
             <p className="text-sm text-gray-500 text-center py-8">No hay informes para este equipo.</p>
           ) : (
             informes.map(inf => (
-              <button
+              <Link
                 key={inf.id}
-                onClick={() => alert('Flujo de firma — próximamente. Por ahora abre el PDF para revisar.')}
+                href={`/firmar/${inf.id}`}
+                onClick={onClose}
                 className="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
               >
                 <PenLine className="w-4 h-4 text-gray-400 flex-shrink-0" />
@@ -486,16 +487,9 @@ function ModalFirmar({
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
-              </button>
+              </Link>
             ))
           )}
-        </div>
-
-        <div className="px-5 py-3 border-t border-gray-100 bg-amber-50 flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-800">
-            La firma sobre PDF está en desarrollo. Pronto podrás firmar directamente desde aquí.
-          </p>
         </div>
       </div>
     </div>

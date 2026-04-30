@@ -313,6 +313,20 @@ export async function actualizarPdfUrl(informeId: string, pdfUrl: string): Promi
   await supabase.from('informes').update({ pdf_url: pdfUrl }).eq('id', informeId)
 }
 
+export interface FirmaPos {
+  page: number
+  x_mm: number
+  y_mm: number
+  w_mm: number
+  h_mm: number
+  page_w_mm: number
+  page_h_mm: number
+}
+
+export async function actualizarFirmaPos(informeId: string, firmaPos: FirmaPos): Promise<void> {
+  await supabase.from('informes').update({ firma_pos: firmaPos }).eq('id', informeId)
+}
+
 export async function listarInformesEmpresa(opts: {
   limite?: number
   tipo?: string
