@@ -15,7 +15,7 @@ interface InformeDetail {
   modelo: string | null
   serial: string | null
   pdf_url: string | null
-  pdf_firmado_url: string | null
+  firmado_at: string | null
   firma_pos: {
     page: number
     x_mm: number
@@ -55,7 +55,7 @@ export default function FirmarPage() {
     setError(null)
     const { data, error: err } = await supabase
       .from('informes')
-      .select('id, qr_code, numero_informe, cliente, marca, modelo, serial, pdf_url, pdf_firmado_url, firma_pos')
+      .select('id, qr_code, numero_informe, cliente, marca, modelo, serial, pdf_url, firmado_at, firma_pos')
       .eq('id', informeId)
       .maybeSingle()
     if (err || !data) {
@@ -146,7 +146,7 @@ export default function FirmarPage() {
     )
   }
 
-  const yaFirmado = !!informe.pdf_firmado_url
+  const yaFirmado = !!informe.firmado_at
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -172,11 +172,13 @@ export default function FirmarPage() {
             <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-green-800">
               <p className="font-medium">Este informe ya fue firmado</p>
-              <p className="text-xs mt-1">
-                <a href={informe.pdf_firmado_url!} target="_blank" rel="noopener noreferrer" className="underline">
-                  Descargar PDF firmado
-                </a>
-              </p>
+              {informe.pdf_url && (
+                <p className="text-xs mt-1">
+                  <a href={informe.pdf_url} target="_blank" rel="noopener noreferrer" className="underline">
+                    Descargar PDF firmado
+                  </a>
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -193,15 +195,15 @@ export default function FirmarPage() {
           </div>
         )}
 
-        {/* Preview del PDF — usa firmado si existe, sino el original */}
-        {(informe.pdf_firmado_url || informe.pdf_url) && (
+        {/* Preview del PDF (firmado si aplica, original si está pendiente) */}
+        {informe.pdf_url && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
               <p className="text-xs font-medium text-gray-600">
-                Vista previa {informe.pdf_firmado_url ? '(firmado)' : 'del informe'}
+                Vista previa {yaFirmado ? '(firmado)' : 'del informe'}
               </p>
               <a
-                href={informe.pdf_firmado_url || informe.pdf_url!}
+                href={informe.pdf_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-green-600 hover:underline"
@@ -210,7 +212,7 @@ export default function FirmarPage() {
               </a>
             </div>
             <iframe
-              src={informe.pdf_firmado_url || informe.pdf_url!}
+              src={informe.pdf_url}
               className="w-full h-[60vh] bg-gray-100"
               title="Vista previa del PDF"
             />

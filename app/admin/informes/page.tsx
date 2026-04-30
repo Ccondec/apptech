@@ -580,10 +580,10 @@ export default function InformesPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Total informes',     value: informes.length },
-            { label: 'Firmados por cliente', value: informes.filter(i => i.pdf_firmado_url).length },
-            { label: 'Clientes distintos', value: Object.keys(agrupadosPorCliente).length },
-            { label: 'Técnicos activos',   value: [...new Set(informes.map(i => i.tecnico).filter(Boolean))].length },
+            { label: 'Total informes',       value: informes.length },
+            { label: 'Firmados por cliente', value: informes.filter(i => i.firmado_at).length },
+            { label: 'Clientes distintos',   value: Object.keys(agrupadosPorCliente).length },
+            { label: 'Técnicos activos',     value: [...new Set(informes.map(i => i.tecnico).filter(Boolean))].length },
           ].map(stat => (
             <div key={stat.label} className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3">
               <p className="text-2xl font-bold text-gray-800">{stat.value}</p>
@@ -624,29 +624,26 @@ export default function InformesPage() {
                   </div>
                   <p className="text-xs text-gray-500 capitalize self-center">{inf.tipo_reporte ?? '—'}</p>
                   <div className="self-center">
-                    {inf.pdf_firmado_url ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-medium" title={inf.firmado_at ? `Firmado ${new Date(inf.firmado_at).toLocaleString('es-CO')}` : 'Firmado'}>
+                    {inf.firmado_at ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-medium" title={`Firmado ${new Date(inf.firmado_at).toLocaleString('es-CO')}`}>
                         <CheckCircle2 className="w-3 h-3" /> Firmado
                       </span>
                     ) : (
                       <span className="text-[11px] text-gray-400">Pendiente</span>
                     )}
                   </div>
-                  <div className="self-center flex gap-1.5">
-                    {inf.pdf_firmado_url && (
-                      <a href={inf.pdf_firmado_url} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs bg-green-600 hover:bg-green-700 text-white px-2.5 py-1 rounded-lg transition-colors font-medium"
-                        title="PDF con firma del cliente">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Firmado
-                      </a>
-                    )}
+                  <div className="self-center">
                     {inf.pdf_url ? (
                       <a href={inf.pdf_url} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2.5 py-1 rounded-lg transition-colors font-medium"
-                        title={inf.pdf_firmado_url ? 'PDF original (sin firma)' : 'Descargar PDF'}>
-                        <Download className="w-3.5 h-3.5" /> {inf.pdf_firmado_url ? 'Original' : 'PDF'}
+                        className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg transition-colors font-medium ${
+                          inf.firmado_at
+                            ? 'bg-green-600 hover:bg-green-700 text-white'
+                            : 'bg-blue-50 hover:bg-blue-100 text-blue-600'
+                        }`}
+                        title={inf.firmado_at ? 'PDF con firma del cliente' : 'Descargar PDF'}>
+                        <Download className="w-3.5 h-3.5" /> PDF
                       </a>
-                    ) : !inf.pdf_firmado_url && <span className="text-[11px] text-gray-300">—</span>}
+                    ) : <span className="text-[11px] text-gray-300">—</span>}
                   </div>
                 </div>
               ))}

@@ -80,14 +80,15 @@ export async function POST(req: NextRequest) {
   const { data: pub } = admin.storage.from('reportes').getPublicUrl(path)
   const pdfFirmadoUrl = pub.publicUrl
 
-  // Update informe — el firmado supersede al original; pdf_url se limpia para
-  // no tener dos archivos por el mismo informe.
+  // Update: el firmado sobrescribe al original. pdf_url ahora apunta al
+  // PDF firmado y firmado_at marca el estado. pdf_firmado_url se mantiene
+  // por compatibilidad con UI ya desplegada (mismo valor que pdf_url).
   const { error: updErr } = await admin
     .from('informes')
     .update({
+      pdf_url: pdfFirmadoUrl,
       pdf_firmado_url: pdfFirmadoUrl,
       firmado_at: new Date().toISOString(),
-      pdf_url: null,
     })
     .eq('id', informeId)
   if (updErr) {
@@ -106,5 +107,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, pdf_firmado_url: pdfFirmadoUrl })
+  return NextResponse.json({ ok: true, pdf_url: pdfFirmadoUrl })
 }
