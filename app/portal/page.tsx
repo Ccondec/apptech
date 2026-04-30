@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import {
-  LogOut, Search, Filter, X, Building2, MapPin, Cpu, Settings2, Calendar,
+  LogOut, Search, Filter, X, MapPin, Cpu, Settings2, Calendar,
   PenLine, History, Send, ChevronRight,
 } from 'lucide-react'
 
@@ -24,7 +24,6 @@ interface InformeMin {
   qr_code: string
   numero_informe: string | null
   tipo_reporte: string | null
-  ciudad: string | null
   created_at: string
   pdf_url: string | null
 }
@@ -49,7 +48,6 @@ export default function PortalPage() {
 
   // Filtros (los mismos que ya existían, adaptados a equipos)
   const [busqueda, setBusqueda] = useState('')
-  const [filtroCiudad, setFiltroCiudad] = useState('')
   const [filtroUbicacion, setFiltroUbicacion] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
@@ -98,7 +96,7 @@ export default function PortalPage() {
         .order('ubicacion', { ascending: true }),
       supabase
         .from('informes')
-        .select('id, qr_code, numero_informe, tipo_reporte, ciudad, created_at, pdf_url')
+        .select('id, qr_code, numero_informe, tipo_reporte, created_at, pdf_url')
         .eq('empresa_id', user!.empresa_id)
         .ilike('cliente', user!.client_company!) // case-insensitive: el técnico puede guardar con casing distinto
         .order('created_at', { ascending: false }),
@@ -132,9 +130,9 @@ export default function PortalPage() {
     return map
   }, [informes])
 
-  // Por equipo: tipo, última fecha y ciudad (todo derivado de sus informes)
+  // Por equipo: tipo y última fecha (derivados de sus informes)
   const metaPorQr = useMemo(() => {
-    const map = new Map<string, { tipo?: string; lastDate?: string; ciudad?: string }>()
+    const map = new Map<string, { tipo?: string; lastDate?: string }>()
     for (const [qr, infs] of informesPorQr) {
       // Tipo más frecuente
       const counts = new Map<string, number>()
@@ -143,23 +141,16 @@ export default function PortalPage() {
       }
       const tipo = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
       const lastDate = infs[0]?.created_at // ya vienen ordenados desc
-      const ciudad = infs.find(i => i.ciudad)?.ciudad ?? undefined
-      map.set(qr, { tipo, lastDate, ciudad })
+      map.set(qr, { tipo, lastDate })
     }
     return map
   }, [informesPorQr])
 
   // Opciones únicas para filtros
-  const ciudades = useMemo(
-    () => [...new Set([...metaPorQr.values()].map(m => m.ciudad).filter(Boolean) as string[])].sort(),
-    [metaPorQr]
+  const ubicaciones = useMemo(
+    () => [...new Set(equipos.map(e => e.ubicacion).filter(Boolean) as string[])].sort(),
+    [equipos]
   )
-  const ubicaciones = useMemo(() => {
-    const base = filtroCiudad
-      ? equipos.filter(e => metaPorQr.get(e.qr_code)?.ciudad === filtroCiudad)
-      : equipos
-    return [...new Set(base.map(e => e.ubicacion).filter(Boolean) as string[])].sort()
-  }, [equipos, filtroCiudad, metaPorQr])
   const tipos = useMemo(
     () => [...new Set([...metaPorQr.values()].map(m => m.tipo).filter(Boolean) as string[])].sort(),
     [metaPorQr]
@@ -169,7 +160,6 @@ export default function PortalPage() {
   const equiposFiltrados = useMemo(() => {
     return equipos.filter(eq => {
       const meta = metaPorQr.get(eq.qr_code)
-      if (filtroCiudad && meta?.ciudad !== filtroCiudad) return false
       if (filtroUbicacion && eq.ubicacion !== filtroUbicacion) return false
       if (filtroTipo && meta?.tipo !== filtroTipo) return false
 
@@ -197,10 +187,9 @@ export default function PortalPage() {
       }
       return true
     })
-  }, [equipos, filtroCiudad, filtroUbicacion, filtroTipo, filtroFechaDesde, filtroFechaHasta, busqueda, metaPorQr, informesPorQr])
+  }, [equipos, filtroUbicacion, filtroTipo, filtroFechaDesde, filtroFechaHasta, busqueda, metaPorQr, informesPorQr])
 
   const limpiarFiltros = () => {
-    setFiltroCiudad('')
     setFiltroUbicacion('')
     setFiltroTipo('')
     setFiltroFechaDesde('')
@@ -208,7 +197,7 @@ export default function PortalPage() {
     setBusqueda('')
   }
 
-  const hayFiltros = filtroCiudad || filtroUbicacion || filtroTipo || filtroFechaDesde || filtroFechaHasta || busqueda
+  const hayFiltros = filtroUbicacion || filtroTipo || filtroFechaDesde || filtroFechaHasta || busqueda
 
   if (loading || !user) return null
 
@@ -262,21 +251,7 @@ export default function PortalPage() {
           </div>
 
           {mostrarFiltros && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1 border-t border-gray-100">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
-                  <Building2 className="w-3 h-3" /> Ciudad
-                </label>
-                <select
-                  value={filtroCiudad}
-                  onChange={e => { setFiltroCiudad(e.target.value); setFiltroUbicacion('') }}
-                  className="w-full h-9 px-2 border border-gray-200 rounded-md text-sm bg-white"
-                >
-                  <option value="">Todas</option>
-                  {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 border-t border-gray-100">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-500 flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> Sede / Ubicación
@@ -360,7 +335,6 @@ export default function PortalPage() {
             {equiposFiltrados.map(eq => {
               const infs = informesPorQr.get(eq.qr_code) ?? []
               const countInformes = infs.length
-              const ciudad = metaPorQr.get(eq.qr_code)?.ciudad
               return (
                 <div key={eq.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col sm:flex-row sm:items-center gap-3">
                   {/* Info del equipo */}
@@ -382,11 +356,6 @@ export default function PortalPage() {
                         {eq.ubicacion && (
                           <span className="text-xs text-gray-500 flex items-center gap-0.5">
                             <MapPin className="w-3 h-3" />{eq.ubicacion}
-                          </span>
-                        )}
-                        {ciudad && (
-                          <span className="text-xs text-gray-500 flex items-center gap-0.5">
-                            <Building2 className="w-3 h-3" />{ciudad}
                           </span>
                         )}
                       </div>
