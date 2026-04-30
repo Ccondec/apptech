@@ -45,6 +45,8 @@ export default function AdminTicketsPage() {
   // Notification sound for new tickets (in-app)
   const lastSeenIdRef = useRef<string | null>(null)
   const [nuevoCount, setNuevoCount] = useState(0)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const [notifEnabled, setNotifEnabled] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) { router.push('/login'); return }
@@ -55,6 +57,10 @@ export default function AdminTicketsPage() {
     if (!user || user.rol !== 'admin') return
     cargarTickets()
     cargarTecnicos()
+    // Detectar si las notificaciones ya están permitidas (sesiones previas)
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      setNotifEnabled(true)
+    }
   }, [user])
 
   // Realtime: nuevos tickets
@@ -69,8 +75,8 @@ export default function AdminTicketsPage() {
           const nuevo = payload.new as TicketRecord
           setTickets(prev => [nuevo, ...prev])
           setNuevoCount(c => c + 1)
-          // Sonido suave (in-app)
-          tryBeep()
+          // Notificación del sistema + beep (requiere haber tocado "Activar")
+          notificarNuevoTicket(nuevo, audioCtxRef.current)
         }
       )
       .on(
@@ -167,6 +173,15 @@ export default function AdminTicketsPage() {
               {nuevoCount} nuevo{nuevoCount !== 1 ? 's' : ''} ✨
             </button>
           )}
+          <button
+            onClick={() => activarNotificaciones(audioCtxRef, setNotifEnabled)}
+            className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-md font-medium ${
+              notifEnabled ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+            }`}
+            title={notifEnabled ? 'Notificaciones activas' : 'Click para activar alertas sonoras'}
+          >
+            {notifEnabled ? '🔔 Activo' : '🔕 Activar'}
+          </button>
           <button onClick={cargarTickets} className="p-1.5 rounded-md hover:bg-gray-100">
             <RefreshCw className="w-4 h-4 text-gray-600" />
           </button>
@@ -425,26 +440,67 @@ function ModalDetalle({
   )
 }
 
-// ── Helper: beep suave para notificación in-app ────────────────────────────
-function tryBeep() {
+// ── Activar notificaciones: pide permiso + ceba AudioContext ───────────────
+// Debe llamarse desde un click del usuario para evitar bloqueo de autoplay.
+async function activarNotificaciones(
+  ctxRef: React.MutableRefObject<AudioContext | null>,
+  setEnabled: (v: boolean) => void,
+) {
+  // 1) Pedir permiso de Notification API (si está disponible)
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (Notification.permission === 'default') {
+      try { await Notification.requestPermission() } catch { /* ignore */ }
+    }
+  }
+
+  // 2) Cebar AudioContext con un click silencioso (gain=0 por 1ms)
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const Ctor = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext
+    const ctx = new Ctor()
+    if (ctx.state === 'suspended') await ctx.resume()
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.frequency.value = 880
-    gain.gain.value = 0.1
+    gain.gain.value = 0
+    osc.connect(gain); gain.connect(ctx.destination)
     osc.start()
-    setTimeout(() => { osc.stop(); ctx.close() }, 150)
-    setTimeout(() => {
-      const ctx2 = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const osc2 = ctx2.createOscillator()
-      const g2 = ctx2.createGain()
-      osc2.connect(g2); g2.connect(ctx2.destination)
-      osc2.frequency.value = 1100; g2.gain.value = 0.1
-      osc2.start()
-      setTimeout(() => { osc2.stop(); ctx2.close() }, 150)
-    }, 180)
-  } catch { /* sin audio, no rompe */ }
+    osc.stop(ctx.currentTime + 0.001)
+    ctxRef.current = ctx
+  } catch (e) {
+    console.warn('AudioContext init failed:', e)
+  }
+
+  setEnabled(true)
+}
+
+// ── Notificar un ticket nuevo: Notification + beep ─────────────────────────
+function notificarNuevoTicket(t: TicketRecord, ctx: AudioContext | null) {
+  // Notificación del sistema (si fue autorizada)
+  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification(`Nuevo ticket — ${t.cliente}`, {
+        body: t.descripcion.slice(0, 120),
+        icon: '/icons/icon-192x192.png',
+        tag: `ticket-${t.id}`,
+      })
+    } catch { /* ignore */ }
+  }
+
+  // Beep dual-tone
+  if (!ctx) return
+  try {
+    const now = ctx.currentTime
+    const beep = (freq: number, start: number, dur: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.frequency.setValueAtTime(freq, now + start)
+      gain.gain.setValueAtTime(0, now + start)
+      gain.gain.linearRampToValueAtTime(0.15, now + start + 0.01)
+      gain.gain.linearRampToValueAtTime(0, now + start + dur)
+      osc.start(now + start)
+      osc.stop(now + start + dur + 0.02)
+    }
+    beep(880,  0,    0.12)
+    beep(1100, 0.18, 0.12)
+  } catch { /* ignore */ }
 }
