@@ -193,13 +193,15 @@ export default function FirmarPage() {
           </div>
         )}
 
-        {/* Preview del PDF */}
-        {informe.pdf_url && (
+        {/* Preview del PDF — usa firmado si existe, sino el original */}
+        {(informe.pdf_firmado_url || informe.pdf_url) && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
-              <p className="text-xs font-medium text-gray-600">Vista previa del informe</p>
+              <p className="text-xs font-medium text-gray-600">
+                Vista previa {informe.pdf_firmado_url ? '(firmado)' : 'del informe'}
+              </p>
               <a
-                href={informe.pdf_url}
+                href={informe.pdf_firmado_url || informe.pdf_url!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-green-600 hover:underline"
@@ -208,7 +210,7 @@ export default function FirmarPage() {
               </a>
             </div>
             <iframe
-              src={informe.pdf_url}
+              src={informe.pdf_firmado_url || informe.pdf_url!}
               className="w-full h-[60vh] bg-gray-100"
               title="Vista previa del PDF"
             />

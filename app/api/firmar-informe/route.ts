@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   // Validar que el informe pertenece al cliente
   const { data: informe, error: infErr } = await admin
     .from('informes')
-    .select('id, empresa_id, cliente, qr_code, pdf_firmado_url')
+    .select('id, empresa_id, cliente, qr_code, pdf_url, pdf_firmado_url')
     .eq('id', informeId)
     .maybeSingle()
   if (infErr || !informe) {
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
   if (informe.empresa_id !== usuario.empresa_id) {
     return NextResponse.json({ error: 'Acceso denegado: empresa' }, { status: 403 })
   }
-  if (informe.cliente !== usuario.client_company) {
+  if (informe.cliente.trim().toLowerCase() !== usuario.client_company.trim().toLowerCase()) {
     return NextResponse.json({ error: 'Acceso denegado: no eres el cliente' }, { status: 403 })
   }
 
@@ -80,13 +80,30 @@ export async function POST(req: NextRequest) {
   const { data: pub } = admin.storage.from('reportes').getPublicUrl(path)
   const pdfFirmadoUrl = pub.publicUrl
 
-  // Update informe (service role bypassea RLS — la validación ya la hicimos arriba)
+  // Update informe — el firmado supersede al original; pdf_url se limpia para
+  // no tener dos archivos por el mismo informe.
   const { error: updErr } = await admin
     .from('informes')
-    .update({ pdf_firmado_url: pdfFirmadoUrl, firmado_at: new Date().toISOString() })
+    .update({
+      pdf_firmado_url: pdfFirmadoUrl,
+      firmado_at: new Date().toISOString(),
+      pdf_url: null,
+    })
     .eq('id', informeId)
   if (updErr) {
     return NextResponse.json({ error: `Update: ${updErr.message}` }, { status: 500 })
+  }
+
+  // Borrar el PDF original de Storage (best-effort, no rompe si falla)
+  if (informe.pdf_url) {
+    const m = informe.pdf_url.match(/\/storage\/v1\/object\/public\/reportes\/(.+)$/)
+    if (m && m[1]) {
+      const originalPath = decodeURIComponent(m[1])
+      // Defensa: solo borrar si la ruta pertenece a la misma empresa
+      if (originalPath.startsWith(`${informe.empresa_id}/`)) {
+        admin.storage.from('reportes').remove([originalPath]).catch(() => {})
+      }
+    }
   }
 
   return NextResponse.json({ ok: true, pdf_firmado_url: pdfFirmadoUrl })
