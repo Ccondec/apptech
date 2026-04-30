@@ -272,6 +272,8 @@ export interface InformeRecord {
   observaciones?: string
   recomendaciones?: string
   pdf_url?: string
+  pdf_firmado_url?: string | null
+  firmado_at?: string | null
   created_at: string
 }
 
