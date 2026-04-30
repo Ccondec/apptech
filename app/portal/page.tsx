@@ -100,12 +100,20 @@ export default function PortalPage() {
         .from('informes')
         .select('id, qr_code, numero_informe, tipo_reporte, ciudad, created_at, pdf_url')
         .eq('empresa_id', user!.empresa_id)
-        .eq('cliente', user!.client_company)
+        .ilike('cliente', user!.client_company!) // case-insensitive: el técnico puede guardar con casing distinto
         .order('created_at', { ascending: false }),
     ])
 
     if (resEq.error) console.error('Error cargando equipos:', resEq.error)
     if (resInf.error) console.error('Error cargando informes:', resInf.error)
+
+    console.log(`[portal] cliente=${user!.client_company} | equipos=${resEq.data?.length ?? 0} | informes=${resInf.data?.length ?? 0}`)
+    if (resInf.data?.length) {
+      console.log('[portal] qrs en informes:', [...new Set(resInf.data.map((i: any) => i.qr_code))])
+    }
+    if (resEq.data?.length) {
+      console.log('[portal] qrs en equipos:', resEq.data.map((e: any) => e.qr_code))
+    }
 
     setEquipos((resEq.data as Equipo[]) ?? [])
     setInformes((resInf.data as InformeMin[]) ?? [])
